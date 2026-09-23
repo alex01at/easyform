@@ -1,7 +1,7 @@
 name: Easy Forms
 slug: easyform
 type: plugin
-version: 0.1.2
+version: 0.1.3
 description: Manage Grav forms as standalone entities from the Admin panel and embed them anywhere via shortcode or Twig function.
 icon: wpforms
 author:

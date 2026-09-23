@@ -3,32 +3,9 @@ title: PLUGIN_EASYFORMS.MENU
 form:
   validation: loose
   fields:
-    update_current_version:
-      type: text
-      label: PLUGIN_EASYFORMS.CURRENT_VERSION
-      readonly: true
-
-    update_latest_version:
-      type: text
-      label: PLUGIN_EASYFORMS.LATEST_VERSION
-      readonly: true
-
-    update_notes:
-      type: textarea
-      label: PLUGIN_EASYFORMS.RELEASE_NOTES
-      readonly: true
-      rows: 4
-
-    apply_update:
-      type: toggle
-      label: PLUGIN_EASYFORMS.APPLY_UPDATE
-      help: PLUGIN_EASYFORMS.APPLY_UPDATE_HELP
-      default: 0
-      options:
-        1: PLUGIN_ADMIN.YES
-        0: PLUGIN_ADMIN.NO
-      validate:
-        type: bool
+    intro:
+      type: section
+      text: PLUGIN_EASYFORMS.INTRO_HELP
 
     forms:
       type: list
@@ -49,10 +26,12 @@ form:
         .title:
           type: text
           label: PLUGIN_EASYFORMS.FIELD_TITLE
+          help: PLUGIN_EASYFORMS.FIELD_TITLE_HELP
 
         .shortcode:
           type: text
           label: PLUGIN_EASYFORMS.COL_SHORTCODE
+          help: PLUGIN_EASYFORMS.FIELD_SHORTCODE_HELP
           readonly: true
 
         .fields:
@@ -127,17 +106,20 @@ form:
         .to:
           type: text
           label: PLUGIN_EASYFORMS.FIELD_TO
-          default: '{{ config.plugins.email.to }}'
+          help: PLUGIN_EASYFORMS.FIELD_TO_HELP
+          placeholder: 'name@domain.de'
 
         .from:
           type: text
           label: PLUGIN_EASYFORMS.FIELD_FROM
-          default: '{{ config.plugins.email.from }}'
+          help: PLUGIN_EASYFORMS.FIELD_FROM_HELP
+          placeholder: 'name@domain.de'
 
         .reply_to:
           type: text
           label: PLUGIN_EASYFORMS.FIELD_REPLY_TO
-          placeholder: '{{ form.value.email }}'
+          help: PLUGIN_EASYFORMS.FIELD_REPLY_TO_HELP
+          placeholder: 'name@domain.de'
 
         .subject:
           type: text
@@ -172,3 +154,35 @@ form:
             0: PLUGIN_ADMIN.DISABLED
           validate:
             type: bool
+
+    update_section:
+      type: section
+      title: PLUGIN_EASYFORMS.UPDATE_TITLE
+      underline: true
+
+    update_current_version:
+      type: text
+      label: PLUGIN_EASYFORMS.CURRENT_VERSION
+      readonly: true
+
+    update_latest_version:
+      type: text
+      label: PLUGIN_EASYFORMS.LATEST_VERSION
+      readonly: true
+
+    update_notes:
+      type: textarea
+      label: PLUGIN_EASYFORMS.RELEASE_NOTES
+      readonly: true
+      rows: 4
+
+    apply_update:
+      type: toggle
+      label: PLUGIN_EASYFORMS.APPLY_UPDATE
+      help: PLUGIN_EASYFORMS.APPLY_UPDATE_HELP
+      default: 0
+      options:
+        1: PLUGIN_ADMIN.YES
+        0: PLUGIN_ADMIN.NO
+      validate:
+        type: bool

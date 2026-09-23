@@ -113,13 +113,13 @@ form:
               type: text
               label: PLUGIN_EASYFORMS.FIELD_TO
               help: PLUGIN_EASYFORMS.FIELD_TO_HELP
-              default: '{{ config.plugins.email.to }}'
+              placeholder: 'name@domain.de'
 
             from:
               type: text
               label: PLUGIN_EASYFORMS.FIELD_FROM
               help: PLUGIN_EASYFORMS.FIELD_FROM_HELP
-              default: '{{ config.plugins.email.from }}'
+              placeholder: 'name@domain.de'
 
             reply_to:
               type: text

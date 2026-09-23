@@ -25,6 +25,7 @@
 {% block content %}
 <div id="admin-easyform">
     {% if not is_editor %}
+        <div class="notices info">{{ "PLUGIN_EASYFORMS.INTRO_HELP"|t|markdown|raw }}</div>
         {% if easyforms_update and easyforms_update.available %}
         <div class="notices warning">
             {{ "PLUGIN_EASYFORMS.UPDATE_AVAILABLE"|t }}: v{{ easyforms_update.latest }}
