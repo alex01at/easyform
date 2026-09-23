@@ -1,0 +1,20 @@
+title: PLUGIN_EASYFORMS.UPDATE_TITLE
+
+form:
+  validation: loose
+  fields:
+    current_version:
+      type: text
+      label: PLUGIN_EASYFORMS.CURRENT_VERSION
+      readonly: true
+
+    latest_version:
+      type: text
+      label: PLUGIN_EASYFORMS.LATEST_VERSION
+      readonly: true
+
+    release_notes:
+      type: textarea
+      label: PLUGIN_EASYFORMS.RELEASE_NOTES
+      readonly: true
+      rows: 8

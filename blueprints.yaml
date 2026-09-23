@@ -1,0 +1,40 @@
+name: Easy Forms
+slug: easyforms
+type: plugin
+version: 0.1.0
+description: Manage Grav forms as standalone entities from the Admin panel and embed them anywhere via shortcode or Twig function.
+icon: wpforms
+author:
+  name: findmichonline
+homepage: https://github.com/
+keywords: form, forms, admin, shortcode, builder
+license: MIT
+
+compatibility:
+  grav: '>=1.7.0'
+  php: '>=8.1.0'
+
+dependencies:
+  - { name: grav, version: '>=1.7.0' }
+  - { name: form, version: '>=6.0.0' }
+  - { name: admin, version: '>=1.10.0' }
+
+form:
+  validation: loose
+  fields:
+    enabled:
+      type: toggle
+      label: PLUGIN_ADMIN.PLUGIN_STATUS
+      highlight: 1
+      default: true
+      options:
+        1: PLUGIN_ADMIN.ENABLED
+        0: PLUGIN_ADMIN.DISABLED
+      validate:
+        type: bool
+
+    github_repo:
+      type: text
+      label: PLUGIN_EASYFORMS.FIELD_GITHUB_REPO
+      help: PLUGIN_EASYFORMS.FIELD_GITHUB_REPO_HELP
+      placeholder: 'owner/easyforms'
