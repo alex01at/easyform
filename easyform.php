@@ -90,7 +90,7 @@ class EasyformPlugin extends Plugin
 
         $routes->get('/easyform', [$controller, 'show']);
         $routes->patch('/easyform', [$controller, 'save']);
-        $routes->get('/easyform/_update/badge', [$controller, 'updateBadge']);
+        $routes->get('/easyform/_badge', [$controller, 'badge']);
     }
 
     public function onApiSidebarItems(Event $event): void
@@ -109,7 +109,7 @@ class EasyformPlugin extends Plugin
             'icon' => 'fa-wpforms',
             'route' => '/plugin/easyform',
             'priority' => 10,
-            'badgeEndpoint' => '/easyform/_update/badge',
+            'badgeEndpoint' => '/easyform/_badge',
             'authorize' => ['admin.easyform', 'admin.super', 'api.easyform', 'api.super'],
         ];
 

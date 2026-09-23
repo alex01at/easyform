@@ -64,16 +64,16 @@ final class EasyformsApiController extends AbstractApiController
     }
 
     /**
-     * GET /easyform/_update/badge — live sidebar badge count (0 or 1),
-     * consumed by admin2's badgeEndpoint mechanism.
+     * GET /easyform/_badge — live sidebar badge count: the number of
+     * stored forms, consumed by admin2's badgeEndpoint mechanism. (A
+     * pending-update indicator would be a less standard use of a nav
+     * badge, and is already shown prominently on the page itself.)
      */
-    public function updateBadge(ServerRequestInterface $request): ResponseInterface
+    public function badge(ServerRequestInterface $request): ResponseInterface
     {
         $this->requirePermission($request, self::PERMISSION);
 
-        $release = EasyformsUpdater::checkLatestRelease();
-
-        return ApiResponse::create(['count' => $release['available'] ? 1 : 0]);
+        return ApiResponse::create(['count' => count(EasyformsHelper::listForms())]);
     }
 
     /**

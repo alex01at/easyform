@@ -52,6 +52,27 @@ class EasyformsHelper
     }
 
     /**
+     * Forms created with an earlier version of this plugin (0.1.2 and
+     * before) could end up with these two exact strings literally stored as
+     * their `to`/`from` value: the blueprint used a `default:` there to
+     * document the site-wide fallback, but Grav shows/stores a blueprint
+     * default verbatim rather than evaluating it, and admin2's "new row"
+     * handler copies every field's default into the row's data as soon as
+     * it's created. The value still worked correctly for sending mail (the
+     * email plugin evaluates it as Twig at submission time regardless of
+     * where it came from), but looked broken wherever it was displayed
+     * un-evaluated — including becoming an existing row's list summary,
+     * since that picks the first non-empty string field by insertion order,
+     * and these were inserted before the user had typed anything else.
+     * Silently treated as "not set" wherever a form is loaded, so already-
+     * created forms heal themselves without the user having to re-save.
+     */
+    private const STALE_EMAIL_DEFAULTS = [
+        'to' => '{{ config.plugins.email.to }}',
+        'from' => '{{ config.plugins.email.from }}',
+    ];
+
+    /**
      * @return array<string,mixed>|null
      */
     public static function loadRaw(string $name): ?array
@@ -67,6 +88,12 @@ class EasyformsHelper
 
         $content = (array) $file->content();
         $file->free();
+
+        foreach (self::STALE_EMAIL_DEFAULTS as $key => $staleValue) {
+            if (($content[$key] ?? null) === $staleValue) {
+                $content[$key] = '';
+            }
+        }
 
         return $content;
     }
