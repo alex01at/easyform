@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Grav\Plugin\Easyforms;
+namespace Grav\Plugin\Easyform;
 
 use Grav\Common\Utils;
 use Grav\Plugin\Api\Controllers\AbstractApiController;
@@ -12,8 +12,8 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
- * Admin2 (API-driven admin) backend for the easyforms blueprint page.
- * Registered via onApiRegisterRoutes() in EasyformsPlugin.
+ * Admin2 (API-driven admin) backend for the easyform blueprint page.
+ * Registered via onApiRegisterRoutes() in EasyformPlugin.
  *
  * A GET/PATCH pair per form name, addressed through admin2's generic
  * "blueprint" plugin-page type (see onApiPluginPageInfo()). Deletion has no
@@ -22,7 +22,7 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 final class EasyformsApiController extends AbstractApiController
 {
-    private const PERMISSION = 'admin.easyforms';
+    private const PERMISSION = 'admin.easyform';
 
     /** Route sentinel for "no form yet" (not a valid form name: contains '_'). */
     private const NEW_SENTINEL = '_new';
@@ -88,7 +88,7 @@ final class EasyformsApiController extends AbstractApiController
     }
 
     /**
-     * GET /easyforms/_update — current vs. latest GitHub release, for the
+     * GET /easyform/_update — current vs. latest GitHub release, for the
      * admin2 "Update" blueprint page.
      */
     public function showUpdate(ServerRequestInterface $request): ResponseInterface
@@ -105,7 +105,7 @@ final class EasyformsApiController extends AbstractApiController
     }
 
     /**
-     * PATCH /easyforms/_update — downloads and installs the latest GitHub
+     * PATCH /easyform/_update — downloads and installs the latest GitHub
      * release in place. Restricted to super admins: unlike the regular form
      * CRUD, this replaces the plugin's own code on disk.
      */
@@ -127,7 +127,7 @@ final class EasyformsApiController extends AbstractApiController
     }
 
     /**
-     * GET /easyforms/_update/badge — live sidebar badge count (0 or 1),
+     * GET /easyform/_update/badge — live sidebar badge count (0 or 1),
      * consumed by admin2's badgeEndpoint mechanism.
      */
     public function updateBadge(ServerRequestInterface $request): ResponseInterface

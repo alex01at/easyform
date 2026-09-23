@@ -7,23 +7,23 @@
 {% set is_editor = mode in ['add', 'edit'] %}
 
 {% if is_editor %}
-    {% set data = admin.data('easyforms/' ~ edit_name) %}
+    {% set data = admin.data('easyform/' ~ edit_name) %}
 {% endif %}
 
 {% block titlebar %}
     <div class="button-bar">
         {% if is_editor %}
-            <a class="button" href="{{ admin_route('/easyforms') }}"><i class="fa fa-reply"></i> {{ "PLUGIN_EASYFORMS.BACK_TO_LIST"|t }}</a>
+            <a class="button" href="{{ admin_route('/easyform') }}"><i class="fa fa-reply"></i> {{ "PLUGIN_EASYFORMS.BACK_TO_LIST"|t }}</a>
             <button class="button" type="submit" name="task" value="easyformSave" form="easyform-editor"><i class="fa fa-check"></i> {{ "PLUGIN_EASYFORMS.SAVE"|t }}</button>
         {% else %}
-            <a class="button" href="{{ admin_route('/easyforms/add') }}"><i class="fa fa-plus"></i> {{ "PLUGIN_EASYFORMS.ADD"|t }}</a>
+            <a class="button" href="{{ admin_route('/easyform/add') }}"><i class="fa fa-plus"></i> {{ "PLUGIN_EASYFORMS.ADD"|t }}</a>
         {% endif %}
     </div>
     <h1><i class="fa fa-fw fa-wpforms"></i> {{ "PLUGIN_EASYFORMS.MENU"|t }}{% if mode == 'edit' %}: {{ edit_name }}{% endif %}</h1>
 {% endblock %}
 
 {% block content %}
-<div id="admin-easyforms">
+<div id="admin-easyform">
     {% if not is_editor %}
         {% if easyforms_update and easyforms_update.available %}
         <div class="notices warning">
@@ -31,13 +31,13 @@
             {% if easyforms_update.url %}
                 (<a href="{{ easyforms_update.url }}" target="_blank" rel="noopener noreferrer">{{ "PLUGIN_EASYFORMS.RELEASE_NOTES"|t }}</a>)
             {% endif %}
-            <form style="display:inline" method="post" action="{{ uri.addNonce(admin_route('/easyforms') ~ '/task' ~ config.system.param_sep ~ 'easyformUpdate', 'admin-form', 'admin-nonce') }}">
+            <form style="display:inline" method="post" action="{{ uri.addNonce(admin_route('/easyform') ~ '/task' ~ config.system.param_sep ~ 'easyformUpdate', 'admin-form', 'admin-nonce') }}">
                 <button class="button small" type="submit" onclick="return confirm('{{ "PLUGIN_EASYFORMS.CONFIRM_UPDATE"|t }}')">
                     <i class="fa fa-refresh"></i> {{ "PLUGIN_EASYFORMS.APPLY_UPDATE"|t }}
                 </button>
             </form>
         </div>
-        {% elseif easyforms_update and easyforms_update.error and easyforms_update.error != 'No GitHub repository configured (plugins.easyforms.github_repo).' %}
+        {% elseif easyforms_update and easyforms_update.error and easyforms_update.error != 'No GitHub repository configured (plugins.easyform.github_repo).' %}
         <div class="notices error">{{ "PLUGIN_EASYFORMS.UPDATE_CHECK_FAILED"|t }}: {{ easyforms_update.error }}</div>
         {% endif %}
         {% if easyforms_list %}
@@ -56,12 +56,12 @@
                     <td>{{ f.title }}</td>
                     <td><code>{{ f.name }}</code></td>
                     <td>
-                        <input type="text" class="easyforms-shortcode" value="{{ f.shortcode }}" readonly onclick="this.select()" style="width: 240px;">
-                        <button type="button" class="button small easyforms-copy" data-copy="{{ f.shortcode }}"><i class="fa fa-clipboard"></i> {{ "PLUGIN_EASYFORMS.COPY"|t }}</button>
+                        <input type="text" class="easyform-shortcode" value="{{ f.shortcode }}" readonly onclick="this.select()" style="width: 240px;">
+                        <button type="button" class="button small easyform-copy" data-copy="{{ f.shortcode }}"><i class="fa fa-clipboard"></i> {{ "PLUGIN_EASYFORMS.COPY"|t }}</button>
                     </td>
                     <td class="text-right">
-                        <a class="button" href="{{ admin_route('/easyforms/edit/' ~ f.name) }}"><i class="fa fa-edit"></i> {{ "PLUGIN_EASYFORMS.EDIT"|t }}</a>
-                        <a class="button" href="{{ uri.addNonce(admin_route('/easyforms/edit/' ~ f.name) ~ '/task' ~ config.system.param_sep ~ 'easyformDelete', 'admin-form', 'admin-nonce') }}"
+                        <a class="button" href="{{ admin_route('/easyform/edit/' ~ f.name) }}"><i class="fa fa-edit"></i> {{ "PLUGIN_EASYFORMS.EDIT"|t }}</a>
+                        <a class="button" href="{{ uri.addNonce(admin_route('/easyform/edit/' ~ f.name) ~ '/task' ~ config.system.param_sep ~ 'easyformDelete', 'admin-form', 'admin-nonce') }}"
                            onclick="return confirm('{{ "PLUGIN_EASYFORMS.CONFIRM_DELETE"|t }}')">
                             <i class="fa fa-trash"></i> {{ "PLUGIN_EASYFORMS.DELETE"|t }}
                         </a>
@@ -81,7 +81,7 @@
 
 <script>
 (function () {
-    document.querySelectorAll('.easyforms-copy').forEach(function (btn) {
+    document.querySelectorAll('.easyform-copy').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var text = btn.getAttribute('data-copy');
             if (navigator.clipboard) {

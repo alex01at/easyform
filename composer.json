@@ -1,5 +1,5 @@
 {
-  "name": "findmichonline/grav-plugin-easyforms",
+  "name": "findmichonline/grav-plugin-easyform",
   "type": "grav-plugin",
   "description": "User-friendly form manager for Grav: define forms in the Admin panel, embed them via shortcode or Twig function, powered by the official Form plugin.",
   "license": "MIT",
@@ -8,7 +8,7 @@
   },
   "autoload": {
     "psr-4": {
-      "Grav\\Plugin\\Easyforms\\": "classes/"
+      "Grav\\Plugin\\Easyform\\": "classes/"
     }
   }
 }

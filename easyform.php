@@ -15,9 +15,9 @@ use Grav\Common\Utils;
 use Grav\Events\PermissionsRegisterEvent;
 use Grav\Framework\Acl\PermissionsReader;
 use Grav\Plugin\Api\PermissionResolver;
-use Grav\Plugin\Easyforms\EasyformsApiController;
-use Grav\Plugin\Easyforms\EasyformsHelper;
-use Grav\Plugin\Easyforms\EasyformsUpdater;
+use Grav\Plugin\Easyform\EasyformsApiController;
+use Grav\Plugin\Easyform\EasyformsHelper;
+use Grav\Plugin\Easyform\EasyformsUpdater;
 use Grav\Plugin\Form\Form;
 use RocketTheme\Toolbox\Event\Event;
 use Thunder\Shortcode\Shortcode\ShortcodeInterface;
@@ -33,7 +33,7 @@ use Twig\TwigFunction;
  * plugin's Form class expects; validation, email, save and redirect actions
  * are all executed by that plugin.
  */
-class EasyformsPlugin extends Plugin
+class EasyformPlugin extends Plugin
 {
     public static function getSubscribedEvents(): array
     {
@@ -53,7 +53,7 @@ class EasyformsPlugin extends Plugin
     public function autoload(): ClassLoader
     {
         $loader = new ClassLoader();
-        $loader->setPsr4('Grav\\Plugin\\Easyforms\\', __DIR__ . '/classes');
+        $loader->setPsr4('Grav\\Plugin\\Easyform\\', __DIR__ . '/classes');
         $loader->register();
 
         return $loader;
@@ -72,7 +72,7 @@ class EasyformsPlugin extends Plugin
      * Every form gets its own sidebar entry and its own admin2 "blueprint"
      * plugin page (the same generic single-object editor page_type the
      * official admin2 docs use for a plugin's own settings), addressed by
-     * a synthetic plugin slug: "easyforms-edit-{name}" or "easyforms-new".
+     * a synthetic plugin slug: "easyform-edit-{name}" or "easyform-new".
      * There is no dedicated delete action button here (unverified without
      * a live admin2 instance to test against), so deletion instead rides
      * along on a save via the blueprint's `delete_requested` toggle field.
@@ -85,16 +85,16 @@ class EasyformsPlugin extends Plugin
         $controller = EasyformsApiController::class;
 
         // Static routes must be registered before the parameterized
-        // '/easyforms/{name}' one below, or FastRoute would otherwise treat
+        // '/easyform/{name}' one below, or FastRoute would otherwise treat
         // "_update" as a form name (matching admin.php's own core routes,
         // which register SSO's static routes ahead of its parameterized ones
         // for the same reason).
-        $routes->get('/easyforms/_update', [$controller, 'showUpdate']);
-        $routes->patch('/easyforms/_update', [$controller, 'applyUpdate']);
-        $routes->get('/easyforms/_update/badge', [$controller, 'updateBadge']);
+        $routes->get('/easyform/_update', [$controller, 'showUpdate']);
+        $routes->patch('/easyform/_update', [$controller, 'applyUpdate']);
+        $routes->get('/easyform/_update/badge', [$controller, 'updateBadge']);
 
-        $routes->get('/easyforms/{name}', [$controller, 'show']);
-        $routes->patch('/easyforms/{name}', [$controller, 'save']);
+        $routes->get('/easyform/{name}', [$controller, 'show']);
+        $routes->patch('/easyform/{name}', [$controller, 'save']);
     }
 
     public function onApiSidebarItems(Event $event): void
@@ -108,36 +108,36 @@ class EasyformsPlugin extends Plugin
 
         foreach (EasyformsHelper::listForms() as $form) {
             $items[] = [
-                'id' => 'easyforms-edit-' . $form['name'],
-                'plugin' => 'easyforms-edit-' . $form['name'],
+                'id' => 'easyform-edit-' . $form['name'],
+                'plugin' => 'easyform-edit-' . $form['name'],
                 'label' => $form['title'],
                 'icon' => 'fa-wpforms',
-                'route' => '/plugin/easyforms-edit-' . $form['name'],
+                'route' => '/plugin/easyform-edit-' . $form['name'],
                 'priority' => 20,
-                'authorize' => ['admin.easyforms', 'admin.super', 'api.easyforms', 'api.super'],
+                'authorize' => ['admin.easyform', 'admin.super', 'api.easyform', 'api.super'],
             ];
         }
 
         $items[] = [
-            'id' => 'easyforms-new',
-            'plugin' => 'easyforms-new',
+            'id' => 'easyform-new',
+            'plugin' => 'easyform-new',
             'label' => 'PLUGIN_EASYFORMS.ADD',
             'icon' => 'fa-plus',
-            'route' => '/plugin/easyforms-new',
+            'route' => '/plugin/easyform-new',
             'priority' => 10,
-            'authorize' => ['admin.easyforms', 'admin.super', 'api.easyforms', 'api.super'],
+            'authorize' => ['admin.easyform', 'admin.super', 'api.easyform', 'api.super'],
         ];
 
         if (EasyformsUpdater::getRepo() !== '') {
             $items[] = [
-                'id' => 'easyforms-update',
-                'plugin' => 'easyforms-update',
+                'id' => 'easyform-update',
+                'plugin' => 'easyform-update',
                 'label' => 'PLUGIN_EASYFORMS.UPDATE_TITLE',
                 'icon' => 'fa-refresh',
-                'route' => '/plugin/easyforms-update',
+                'route' => '/plugin/easyform-update',
                 'priority' => 5,
-                'badgeEndpoint' => '/easyforms/_update/badge',
-                'authorize' => ['admin.easyforms', 'admin.super', 'api.easyforms', 'api.super'],
+                'badgeEndpoint' => '/easyform/_update/badge',
+                'authorize' => ['admin.easyform', 'admin.super', 'api.easyform', 'api.super'],
             ];
         }
 
@@ -148,16 +148,16 @@ class EasyformsPlugin extends Plugin
     {
         $plugin = (string) $event['plugin'];
 
-        if ($plugin === 'easyforms-update') {
+        if ($plugin === 'easyform-update') {
             $this->onApiPluginPageInfoForUpdate($event);
 
             return;
         }
 
-        if ($plugin === 'easyforms-new') {
+        if ($plugin === 'easyform-new') {
             $name = '_new';
-        } elseif (str_starts_with($plugin, 'easyforms-edit-')) {
-            $name = substr($plugin, strlen('easyforms-edit-'));
+        } elseif (str_starts_with($plugin, 'easyform-edit-')) {
+            $name = substr($plugin, strlen('easyform-edit-'));
         } else {
             return;
         }
@@ -178,8 +178,8 @@ class EasyformsPlugin extends Plugin
             'icon' => 'wpforms',
             'page_type' => 'blueprint',
             'blueprint' => 'easyform',
-            'data_endpoint' => '/easyforms/' . $name,
-            'save_endpoint' => '/easyforms/' . $name,
+            'data_endpoint' => '/easyform/' . $name,
+            'save_endpoint' => '/easyform/' . $name,
             'actions' => [
                 [
                     'id' => 'save',
@@ -199,14 +199,14 @@ class EasyformsPlugin extends Plugin
         }
 
         $event['definition'] = [
-            'id' => 'easyforms-update',
-            'plugin' => 'easyforms-update',
+            'id' => 'easyform-update',
+            'plugin' => 'easyform-update',
             'title' => $this->grav['language']->translate('PLUGIN_EASYFORMS.UPDATE_TITLE'),
             'icon' => 'refresh',
             'page_type' => 'blueprint',
             'blueprint' => 'easyform-update',
-            'data_endpoint' => '/easyforms/_update',
-            'save_endpoint' => '/easyforms/_update',
+            'data_endpoint' => '/easyform/_update',
+            'save_endpoint' => '/easyform/_update',
             'actions' => [
                 [
                     'id' => 'save',
@@ -219,7 +219,7 @@ class EasyformsPlugin extends Plugin
     }
 
     /**
-     * Checks the admin.easyforms / admin.super permission for either kind of
+     * Checks the admin.easyform / admin.super permission for either kind of
      * authenticated caller this plugin can see:
      *
      * - admin-classic: User::authorize() works, but takes a single string
@@ -247,7 +247,7 @@ class EasyformsPlugin extends Plugin
             return false;
         }
 
-        if ($user->authorize('admin.super') || $user->authorize('admin.easyforms')) {
+        if ($user->authorize('admin.super') || $user->authorize('admin.easyform')) {
             return true;
         }
 
@@ -255,9 +255,9 @@ class EasyformsPlugin extends Plugin
 
         return (bool) (
             $resolver->resolve($user, 'admin.super')
-            || $resolver->resolve($user, 'admin.easyforms')
+            || $resolver->resolve($user, 'admin.easyform')
             || $resolver->resolve($user, 'api.super')
-            || $resolver->resolve($user, 'api.easyforms')
+            || $resolver->resolve($user, 'api.easyform')
         );
     }
 
@@ -295,9 +295,9 @@ class EasyformsPlugin extends Plugin
         $twig = $this->grav['twig'];
 
         $twig->plugins_hooked_nav['PLUGIN_EASYFORMS.MENU'] = [
-            'route' => 'easyforms',
+            'route' => 'easyform',
             'icon' => 'fa-wpforms',
-            'authorize' => ['admin.easyforms', 'admin.super', 'api.easyforms', 'api.super'],
+            'authorize' => ['admin.easyform', 'admin.super', 'api.easyform', 'api.super'],
             'priority' => 90,
         ];
     }
@@ -305,12 +305,12 @@ class EasyformsPlugin extends Plugin
     /**
      * Injects the list of stored forms as a twig variable when we're on our
      * own admin page. The add/edit form itself is fetched by the template
-     * directly via admin.data('easyforms/...'), same as core config pages do.
+     * directly via admin.data('easyform/...'), same as core config pages do.
      */
     public function onTwigAdminVariables(): void
     {
         $admin = $this->grav['admin'] ?? null;
-        if (!$admin || $admin->location !== 'easyforms') {
+        if (!$admin || $admin->location !== 'easyform') {
             return;
         }
 
@@ -324,18 +324,18 @@ class EasyformsPlugin extends Plugin
     }
 
     /**
-     * Provides the Data object behind admin.data('easyforms/{name}'), backed
+     * Provides the Data object behind admin.data('easyform/{name}'), backed
      * by our own blueprint and by user/data/easyforms/{name}.yaml instead of
      * the usual config/ or plugins/ locations.
      */
     public function onAdminData(Event $event): void
     {
         $type = (string) $event['type'];
-        if (!str_starts_with($type, 'easyforms/')) {
+        if (!str_starts_with($type, 'easyform/')) {
             return;
         }
 
-        $name = substr($type, strlen('easyforms/'));
+        $name = substr($type, strlen('easyform/'));
 
         $blueprint = new Blueprint('plugin://' . $this->name . '/blueprints/easyform.yaml');
         $blueprint->load();
@@ -353,14 +353,14 @@ class EasyformsPlugin extends Plugin
 
     /**
      * Handles the save/delete tasks for our admin view. The core
-     * AdminController doesn't know about the "easyforms" view, so it fires
+     * AdminController doesn't know about the "easyform" view, so it fires
      * onAdminTaskExecute for any task it can't resolve itself; that's our
      * hook for taskEasyformSave/taskEasyformDelete.
      */
     public function onAdminTaskExecute(Event $event): void
     {
         $controller = $event['controller'];
-        if (!isset($controller->view) || $controller->view !== 'easyforms') {
+        if (!isset($controller->view) || $controller->view !== 'easyform') {
             return;
         }
 
@@ -380,7 +380,7 @@ class EasyformsPlugin extends Plugin
 
     protected function taskEasyformSave($controller): void
     {
-        if (!$controller->authorizeTask('save', ['admin.easyforms', 'admin.super', 'api.easyforms', 'api.super'])) {
+        if (!$controller->authorizeTask('save', ['admin.easyform', 'admin.super', 'api.easyform', 'api.super'])) {
             return;
         }
 
@@ -400,14 +400,14 @@ class EasyformsPlugin extends Plugin
 
         if (!EasyformsHelper::isValidName($name)) {
             $controller->setMessage($this->grav['language']->translate('PLUGIN_EASYFORMS.ERROR_INVALID_NAME'), 'error');
-            $controller->setRedirect('/easyforms/' . ($existingName ? 'edit/' . $existingName : 'add'));
+            $controller->setRedirect('/easyform/' . ($existingName ? 'edit/' . $existingName : 'add'));
 
             return;
         }
 
         if ($existingName === null && EasyformsHelper::exists($name)) {
             $controller->setMessage($this->grav['language']->translate('PLUGIN_EASYFORMS.ERROR_NAME_TAKEN'), 'error');
-            $controller->setRedirect('/easyforms/add');
+            $controller->setRedirect('/easyform/add');
 
             return;
         }
@@ -417,12 +417,12 @@ class EasyformsPlugin extends Plugin
         EasyformsHelper::save($name, $data);
 
         $controller->setMessage($this->grav['language']->translate('PLUGIN_EASYFORMS.SAVED'), 'info');
-        $controller->setRedirect('/easyforms');
+        $controller->setRedirect('/easyform');
     }
 
     protected function taskEasyformDelete($controller): void
     {
-        if (!$controller->authorizeTask('delete', ['admin.easyforms', 'admin.super', 'api.easyforms', 'api.super'])) {
+        if (!$controller->authorizeTask('delete', ['admin.easyform', 'admin.super', 'api.easyform', 'api.super'])) {
             return;
         }
 
@@ -434,7 +434,7 @@ class EasyformsPlugin extends Plugin
             $controller->setMessage($this->grav['language']->translate('PLUGIN_EASYFORMS.DELETED'), 'info');
         }
 
-        $controller->setRedirect('/easyforms');
+        $controller->setRedirect('/easyform');
     }
 
     /**
@@ -450,7 +450,7 @@ class EasyformsPlugin extends Plugin
 
         $result = EasyformsUpdater::applyUpdate();
         $controller->setMessage($result['message'], $result['success'] ? 'info' : 'error');
-        $controller->setRedirect('/easyforms');
+        $controller->setRedirect('/easyform');
     }
 
     /*

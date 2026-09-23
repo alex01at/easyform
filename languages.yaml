@@ -65,7 +65,7 @@ en:
     ERROR_INVALID_NAME: 'Please enter a valid form name (lowercase letters, numbers and hyphens only).'
     ERROR_NAME_TAKEN: 'A form with this name already exists.'
     FIELD_GITHUB_REPO: 'GitHub repository'
-    FIELD_GITHUB_REPO_HELP: 'owner/repo, e.g. "myusername/easyforms". Leave empty to disable update checks.'
+    FIELD_GITHUB_REPO_HELP: 'owner/repo, e.g. "myusername/easyform". Leave empty to disable update checks.'
     UPDATE_TITLE: 'Update'
     CURRENT_VERSION: 'Current version'
     LATEST_VERSION: 'Latest version'

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Grav\Plugin\Easyforms;
+namespace Grav\Plugin\Easyform;
 
 use Grav\Common\Filesystem\Folder;
 use Grav\Common\Grav;
@@ -10,7 +10,7 @@ use Grav\Common\Utils;
 use Grav\Common\File\CompiledYamlFile;
 
 /**
- * Reads, writes and translates easyforms definitions.
+ * Reads, writes and translates easyform definitions.
  *
  * Storage format (user/data/easyforms/{name}.yaml) is a small, admin-friendly
  * schema. buildGravForm() bridges it into the array shape the official
@@ -100,7 +100,7 @@ class EasyformsHelper
     }
 
     /**
-     * List all stored easyforms as [name => ['name' => .., 'title' => .., 'shortcode' => ..]].
+     * List all stored easyform as [name => ['name' => .., 'title' => .., 'shortcode' => ..]].
      *
      * @return array<string,array<string,string>>
      */

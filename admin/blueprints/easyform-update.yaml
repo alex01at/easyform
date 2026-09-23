@@ -1,1 +1,1 @@
-extends@: 'plugin://easyforms/blueprints/easyform-update.yaml'
+extends@: 'plugin://easyform/blueprints/easyform-update.yaml'

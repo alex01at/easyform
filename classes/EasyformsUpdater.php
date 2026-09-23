@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Grav\Plugin\Easyforms;
+namespace Grav\Plugin\Easyform;
 
 use Grav\Common\File\CompiledYamlFile;
 use Grav\Common\Filesystem\Folder;
@@ -20,10 +20,10 @@ use ZipArchive;
  */
 final class EasyformsUpdater
 {
-    private const CACHE_KEY = 'easyforms-update-check';
+    private const CACHE_KEY = 'easyform-update-check';
     private const CACHE_TTL = 1800;
     private const CACHE_TTL_ERROR = 300;
-    private const USER_AGENT = 'easyforms-grav-plugin-updater';
+    private const USER_AGENT = 'easyform-grav-plugin-updater';
 
     public static function pluginRoot(): string
     {
@@ -41,7 +41,7 @@ final class EasyformsUpdater
 
     public static function getRepo(): string
     {
-        $repo = (string) (Grav::instance()['config']->get('plugins.easyforms.github_repo') ?? '');
+        $repo = (string) (Grav::instance()['config']->get('plugins.easyform.github_repo') ?? '');
 
         return trim($repo, "/ \t\n\r\0\x0B");
     }
@@ -65,7 +65,7 @@ final class EasyformsUpdater
         ];
 
         if ($repo === '' || !str_contains($repo, '/')) {
-            $base['error'] = 'No GitHub repository configured (plugins.easyforms.github_repo).';
+            $base['error'] = 'No GitHub repository configured (plugins.easyform.github_repo).';
 
             return $base;
         }
@@ -238,7 +238,7 @@ final class EasyformsUpdater
         }
 
         $locator = Grav::instance()['locator'];
-        $workDir = $locator->findResource('cache://easyforms-update', true, true);
+        $workDir = $locator->findResource('cache://easyform-update', true, true);
         Folder::create($workDir);
 
         $zipPath = $workDir . '/release.zip';
@@ -269,14 +269,14 @@ final class EasyformsUpdater
 
             return [
                 'success' => false,
-                'message' => 'The downloaded release does not look like a valid easyforms plugin (easyforms.php not found).',
+                'message' => 'The downloaded release does not look like a valid easyform plugin (easyform.php not found).',
                 'version' => null,
             ];
         }
 
         $liveRoot = self::pluginRoot();
         $parent = dirname($liveRoot);
-        $backup = $parent . '/easyforms-backup-' . date('Ymd-His');
+        $backup = $parent . '/easyform-backup-' . date('Ymd-His');
 
         if (!@rename($liveRoot, $backup)) {
             Folder::delete($extractPath);
@@ -313,14 +313,14 @@ final class EasyformsUpdater
      */
     private static function resolveExtractedPluginRoot(string $extractPath): ?string
     {
-        if (is_file($extractPath . '/easyforms.php')) {
+        if (is_file($extractPath . '/easyform.php')) {
             return $extractPath;
         }
 
         $entries = array_values(array_diff(scandir($extractPath) ?: [], ['.', '..']));
         if (count($entries) === 1 && is_dir($extractPath . '/' . $entries[0])) {
             $candidate = $extractPath . '/' . $entries[0];
-            if (is_file($candidate . '/easyforms.php')) {
+            if (is_file($candidate . '/easyform.php')) {
                 return $candidate;
             }
         }

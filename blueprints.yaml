@@ -1,12 +1,12 @@
 name: Easy Forms
-slug: easyforms
+slug: easyform
 type: plugin
-version: 0.1.0
+version: 0.1.1
 description: Manage Grav forms as standalone entities from the Admin panel and embed them anywhere via shortcode or Twig function.
 icon: wpforms
 author:
   name: findmichonline
-homepage: https://github.com/
+homepage: https://github.com/alex01at/easyform
 keywords: form, forms, admin, shortcode, builder
 license: MIT
 
@@ -37,4 +37,4 @@ form:
       type: text
       label: PLUGIN_EASYFORMS.FIELD_GITHUB_REPO
       help: PLUGIN_EASYFORMS.FIELD_GITHUB_REPO_HELP
-      placeholder: 'owner/easyforms'
+      placeholder: 'owner/easyform'

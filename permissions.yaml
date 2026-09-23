@@ -1,7 +1,7 @@
 actions:
-  admin.easyforms:
+  admin.easyform:
     type: access
     label: Manage Easy Forms (admin-classic)
-  api.easyforms:
+  api.easyform:
     type: access
     label: Manage Easy Forms (admin2/API)

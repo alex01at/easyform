@@ -2,6 +2,6 @@
 title: Easy Forms
 
 access:
-    admin.easyforms: true
+    admin.easyform: true
     admin.super: true
 ---
