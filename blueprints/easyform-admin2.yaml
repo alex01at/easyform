@@ -1,0 +1,174 @@
+title: PLUGIN_EASYFORMS.MENU
+
+form:
+  validation: loose
+  fields:
+    update_current_version:
+      type: text
+      label: PLUGIN_EASYFORMS.CURRENT_VERSION
+      readonly: true
+
+    update_latest_version:
+      type: text
+      label: PLUGIN_EASYFORMS.LATEST_VERSION
+      readonly: true
+
+    update_notes:
+      type: textarea
+      label: PLUGIN_EASYFORMS.RELEASE_NOTES
+      readonly: true
+      rows: 4
+
+    apply_update:
+      type: toggle
+      label: PLUGIN_EASYFORMS.APPLY_UPDATE
+      help: PLUGIN_EASYFORMS.APPLY_UPDATE_HELP
+      default: 0
+      options:
+        1: PLUGIN_ADMIN.YES
+        0: PLUGIN_ADMIN.NO
+      validate:
+        type: bool
+
+    forms:
+      type: list
+      label: PLUGIN_EASYFORMS.MENU
+      style: vertical
+      collapsed: true
+      btnLabel: PLUGIN_EASYFORMS.ADD
+
+      fields:
+        .name:
+          type: text
+          label: PLUGIN_EASYFORMS.FIELD_NAME
+          help: PLUGIN_EASYFORMS.FIELD_NAME_HELP
+          validate:
+            required: true
+            pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+
+        .title:
+          type: text
+          label: PLUGIN_EASYFORMS.FIELD_TITLE
+
+        .shortcode:
+          type: text
+          label: PLUGIN_EASYFORMS.COL_SHORTCODE
+          readonly: true
+
+        .fields:
+          type: list
+          label: PLUGIN_EASYFORMS.FIELD_FIELDS
+          style: vertical
+          collapsed: true
+          btnLabel: PLUGIN_EASYFORMS.ADD_FIELD
+
+          fields:
+            .name:
+              type: text
+              label: PLUGIN_EASYFORMS.FIELD_FIELDNAME
+              validate:
+                required: true
+
+            .label:
+              type: text
+              label: PLUGIN_EASYFORMS.FIELD_LABEL
+
+            .type:
+              type: select
+              label: PLUGIN_EASYFORMS.FIELD_TYPE
+              default: text
+              options:
+                text: PLUGIN_EASYFORMS.TYPE_TEXT
+                email: PLUGIN_EASYFORMS.TYPE_EMAIL
+                textarea: PLUGIN_EASYFORMS.TYPE_TEXTAREA
+                date: PLUGIN_EASYFORMS.TYPE_DATE
+                checkbox: PLUGIN_EASYFORMS.TYPE_CHECKBOX
+                select: PLUGIN_EASYFORMS.TYPE_SELECT
+                file: PLUGIN_EASYFORMS.TYPE_FILE
+
+            .placeholder:
+              type: text
+              label: PLUGIN_EASYFORMS.FIELD_PLACEHOLDER
+
+            .required:
+              type: toggle
+              label: PLUGIN_EASYFORMS.FIELD_REQUIRED
+              default: 0
+              options:
+                1: PLUGIN_ADMIN.YES
+                0: PLUGIN_ADMIN.NO
+              validate:
+                type: bool
+
+            .options:
+              type: list
+              label: PLUGIN_EASYFORMS.FIELD_OPTIONS
+              help: PLUGIN_EASYFORMS.FIELD_OPTIONS_HELP
+              style: vertical
+              collapsed: true
+              fields:
+                .key:
+                  type: text
+                  label: PLUGIN_EASYFORMS.FIELD_OPTION_KEY
+                .value:
+                  type: text
+                  label: PLUGIN_EASYFORMS.FIELD_OPTION_VALUE
+
+        .email_enabled:
+          type: toggle
+          label: PLUGIN_EASYFORMS.FIELD_EMAIL_ENABLED
+          default: 0
+          options:
+            1: PLUGIN_ADMIN.ENABLED
+            0: PLUGIN_ADMIN.DISABLED
+          validate:
+            type: bool
+
+        .to:
+          type: text
+          label: PLUGIN_EASYFORMS.FIELD_TO
+          default: '{{ config.plugins.email.to }}'
+
+        .from:
+          type: text
+          label: PLUGIN_EASYFORMS.FIELD_FROM
+          default: '{{ config.plugins.email.from }}'
+
+        .reply_to:
+          type: text
+          label: PLUGIN_EASYFORMS.FIELD_REPLY_TO
+          placeholder: '{{ form.value.email }}'
+
+        .subject:
+          type: text
+          label: PLUGIN_EASYFORMS.FIELD_SUBJECT
+
+        .message:
+          type: textarea
+          label: PLUGIN_EASYFORMS.FIELD_MESSAGE
+          default: PLUGIN_EASYFORMS.DEFAULT_MESSAGE
+
+        .reset:
+          type: toggle
+          label: PLUGIN_EASYFORMS.FIELD_RESET
+          default: 1
+          options:
+            1: PLUGIN_ADMIN.YES
+            0: PLUGIN_ADMIN.NO
+          validate:
+            type: bool
+
+        .redirect:
+          type: text
+          label: PLUGIN_EASYFORMS.FIELD_REDIRECT
+          placeholder: /danke
+
+        .save_enabled:
+          type: toggle
+          label: PLUGIN_EASYFORMS.FIELD_SAVE_ENABLED
+          default: 0
+          options:
+            1: PLUGIN_ADMIN.ENABLED
+            0: PLUGIN_ADMIN.DISABLED
+          validate:
+            type: bool

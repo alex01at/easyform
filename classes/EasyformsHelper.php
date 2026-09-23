@@ -129,6 +129,77 @@ class EasyformsHelper
     }
 
     /**
+     * Full raw configs for every stored form, each annotated with its
+     * shortcode for display. Used by the admin2 single-page list editor,
+     * which manages every form as one repeatable list field rather than a
+     * separate page per form (admin2's plugin-page route only supports one
+     * URL segment, and it must be a real installed plugin's slug — a
+     * separate synthetic page per form, as admin-classic uses, is not
+     * possible there).
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public static function listAllRaw(): array
+    {
+        $list = [];
+
+        foreach (array_keys(self::listForms()) as $name) {
+            $config = self::loadRaw($name) ?? ['name' => $name];
+            $config['shortcode'] = '[easyform name="' . $name . '"]';
+            $list[] = $config;
+        }
+
+        return $list;
+    }
+
+    /**
+     * Replaces the whole set of stored forms with $forms, as submitted by
+     * the admin2 list editor: existing forms are overwritten, new ones
+     * created, and any name no longer present in the list is deleted. This
+     * also handles a rename correctly — the old name simply disappears from
+     * the submitted list and its file is removed, while the new name is
+     * written as if newly created.
+     *
+     * @param array<int,array<string,mixed>> $forms
+     * @return array{saved:list<string>,errors:list<string>}
+     */
+    public static function syncFromList(array $forms): array
+    {
+        $existingNames = array_keys(self::listForms());
+        $submittedNames = [];
+        $errors = [];
+
+        foreach ($forms as $form) {
+            if (!is_array($form)) {
+                continue;
+            }
+
+            $name = trim((string) ($form['name'] ?? ''));
+
+            if (!self::isValidName($name)) {
+                $errors[] = "Invalid form name: '{$name}'.";
+                continue;
+            }
+
+            if (in_array($name, $submittedNames, true)) {
+                $errors[] = "Duplicate form name: '{$name}'.";
+                continue;
+            }
+
+            unset($form['shortcode']);
+            $form['name'] = $name;
+            self::save($name, $form);
+            $submittedNames[] = $name;
+        }
+
+        foreach (array_diff($existingNames, $submittedNames) as $removedName) {
+            self::delete($removedName);
+        }
+
+        return ['saved' => $submittedNames, 'errors' => $errors];
+    }
+
+    /**
      * Translate the admin-friendly easyform config into the array shape the
      * official `form` plugin's Form class expects: ['name' => ..,
      * 'fields' => [...], 'process' => [...], 'buttons' => [...]].

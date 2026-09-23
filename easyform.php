@@ -69,13 +69,17 @@ class EasyformPlugin extends Plugin
      * -----------------------------------------------------------------
      * admin2 (API-driven admin) integration
      *
-     * Every form gets its own sidebar entry and its own admin2 "blueprint"
-     * plugin page (the same generic single-object editor page_type the
-     * official admin2 docs use for a plugin's own settings), addressed by
-     * a synthetic plugin slug: "easyform-edit-{name}" or "easyform-new".
-     * There is no dedicated delete action button here (unverified without
-     * a live admin2 instance to test against), so deletion instead rides
-     * along on a save via the blueprint's `delete_requested` toggle field.
+     * admin2's plugin-page route is a single URL segment ("/plugin/[slug]"),
+     * and the endpoint that resolves the page's blueprint
+     * (BlueprintController::pluginPageBlueprint()) does a raw filesystem
+     * lookup treating that segment as a real, installed plugin folder name —
+     * there is no event hook to override that, so a separate synthetic page
+     * per form (mirroring admin-classic's list+add+edit routes) is not
+     * possible here; the segment MUST be "easyform", the plugin's own real
+     * slug. So every form is managed as one row of a single repeatable list
+     * field on the one page at /plugin/easyform, and the GitHub-update
+     * status/action lives on that same page rather than a separate one, for
+     * the same reason.
      * -----------------------------------------------------------------
      */
 
@@ -84,17 +88,9 @@ class EasyformPlugin extends Plugin
         $routes = $event['routes'];
         $controller = EasyformsApiController::class;
 
-        // Static routes must be registered before the parameterized
-        // '/easyform/{name}' one below, or FastRoute would otherwise treat
-        // "_update" as a form name (matching admin.php's own core routes,
-        // which register SSO's static routes ahead of its parameterized ones
-        // for the same reason).
-        $routes->get('/easyform/_update', [$controller, 'showUpdate']);
-        $routes->patch('/easyform/_update', [$controller, 'applyUpdate']);
+        $routes->get('/easyform', [$controller, 'show']);
+        $routes->patch('/easyform', [$controller, 'save']);
         $routes->get('/easyform/_update/badge', [$controller, 'updateBadge']);
-
-        $routes->get('/easyform/{name}', [$controller, 'show']);
-        $routes->patch('/easyform/{name}', [$controller, 'save']);
     }
 
     public function onApiSidebarItems(Event $event): void
@@ -106,59 +102,23 @@ class EasyformPlugin extends Plugin
 
         $items = $event['items'] ?? [];
 
-        foreach (EasyformsHelper::listForms() as $form) {
-            $items[] = [
-                'id' => 'easyform-edit-' . $form['name'],
-                'plugin' => 'easyform-edit-' . $form['name'],
-                'label' => $form['title'],
-                'icon' => 'fa-wpforms',
-                'route' => '/plugin/easyform-edit-' . $form['name'],
-                'priority' => 20,
-                'authorize' => ['admin.easyform', 'admin.super', 'api.easyform', 'api.super'],
-            ];
-        }
-
         $items[] = [
-            'id' => 'easyform-new',
-            'plugin' => 'easyform-new',
-            'label' => 'PLUGIN_EASYFORMS.ADD',
-            'icon' => 'fa-plus',
-            'route' => '/plugin/easyform-new',
+            'id' => 'easyform',
+            'plugin' => 'easyform',
+            'label' => 'PLUGIN_EASYFORMS.MENU',
+            'icon' => 'fa-wpforms',
+            'route' => '/plugin/easyform',
             'priority' => 10,
+            'badgeEndpoint' => '/easyform/_update/badge',
             'authorize' => ['admin.easyform', 'admin.super', 'api.easyform', 'api.super'],
         ];
-
-        if (EasyformsUpdater::getRepo() !== '') {
-            $items[] = [
-                'id' => 'easyform-update',
-                'plugin' => 'easyform-update',
-                'label' => 'PLUGIN_EASYFORMS.UPDATE_TITLE',
-                'icon' => 'fa-refresh',
-                'route' => '/plugin/easyform-update',
-                'priority' => 5,
-                'badgeEndpoint' => '/easyform/_update/badge',
-                'authorize' => ['admin.easyform', 'admin.super', 'api.easyform', 'api.super'],
-            ];
-        }
 
         $event['items'] = $items;
     }
 
     public function onApiPluginPageInfo(Event $event): void
     {
-        $plugin = (string) $event['plugin'];
-
-        if ($plugin === 'easyform-update') {
-            $this->onApiPluginPageInfoForUpdate($event);
-
-            return;
-        }
-
-        if ($plugin === 'easyform-new') {
-            $name = '_new';
-        } elseif (str_starts_with($plugin, 'easyform-edit-')) {
-            $name = substr($plugin, strlen('easyform-edit-'));
-        } else {
+        if ((string) $event['plugin'] !== 'easyform') {
             return;
         }
 
@@ -167,51 +127,20 @@ class EasyformPlugin extends Plugin
             return;
         }
 
-        $title = $name === '_new'
-            ? $this->grav['language']->translate('PLUGIN_EASYFORMS.ADD')
-            : $this->grav['language']->translate('PLUGIN_EASYFORMS.EDIT') . ': ' . $name;
-
         $event['definition'] = [
-            'id' => $plugin,
-            'plugin' => $plugin,
-            'title' => $title,
+            'id' => 'easyform',
+            'plugin' => 'easyform',
+            'title' => $this->grav['language']->translate('PLUGIN_EASYFORMS.MENU'),
             'icon' => 'wpforms',
             'page_type' => 'blueprint',
-            'blueprint' => 'easyform',
-            'data_endpoint' => '/easyform/' . $name,
-            'save_endpoint' => '/easyform/' . $name,
+            'blueprint' => 'easyform-admin2',
+            'data_endpoint' => '/easyform',
+            'save_endpoint' => '/easyform',
             'actions' => [
                 [
                     'id' => 'save',
                     'label' => $this->grav['language']->translate('PLUGIN_EASYFORMS.SAVE'),
                     'icon' => 'fa-check',
-                    'primary' => true,
-                ],
-            ],
-        ];
-    }
-
-    private function onApiPluginPageInfoForUpdate(Event $event): void
-    {
-        $user = $event['user'];
-        if (!$this->userCanManageForms($user)) {
-            return;
-        }
-
-        $event['definition'] = [
-            'id' => 'easyform-update',
-            'plugin' => 'easyform-update',
-            'title' => $this->grav['language']->translate('PLUGIN_EASYFORMS.UPDATE_TITLE'),
-            'icon' => 'refresh',
-            'page_type' => 'blueprint',
-            'blueprint' => 'easyform-update',
-            'data_endpoint' => '/easyform/_update',
-            'save_endpoint' => '/easyform/_update',
-            'actions' => [
-                [
-                    'id' => 'save',
-                    'label' => $this->grav['language']->translate('PLUGIN_EASYFORMS.APPLY_UPDATE'),
-                    'icon' => 'fa-refresh',
                     'primary' => true,
                 ],
             ],
