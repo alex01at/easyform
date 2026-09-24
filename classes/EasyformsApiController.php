@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Grav\Plugin\Easyform;
 
 use Grav\Common\Utils;
+use Grav\Framework\Psr7\Response;
 use Grav\Plugin\Api\Controllers\AbstractApiController;
+use Grav\Plugin\Api\Exceptions\NotFoundException;
 use Grav\Plugin\Api\Exceptions\ValidationException;
 use Grav\Plugin\Api\Response\ApiResponse;
 use Psr\Http\Message\ResponseInterface;
@@ -74,6 +76,31 @@ final class EasyformsApiController extends AbstractApiController
         $this->requirePermission($request, self::PERMISSION);
 
         return ApiResponse::create(['count' => count(EasyformsHelper::listForms())]);
+    }
+
+    /**
+     * GET /easyform/export/{name} — raw CSV, not the usual JSON envelope.
+     * The admin2 UI can't reach this via a plain link (its session is
+     * stateless JWT, never a browsable cookie session — confirmed by
+     * reading AuthController::token(), which explicitly restores whatever
+     * front-end session existed before the API login rather than adopting
+     * it), so the custom `easyform-submissions` field fetches this with the
+     * same X-API-Token header admin2's own JS uses and turns the response
+     * into a client-side download itself.
+     */
+    public function export(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION);
+
+        $name = (string) $this->getRouteParam($request, 'name');
+        if (!EasyformsHelper::exists($name)) {
+            throw new NotFoundException("Form '{$name}' not found.");
+        }
+
+        return new Response(200, [
+            'Content-Type' => 'text/csv; charset=utf-8',
+            'Content-Disposition' => 'attachment; filename="' . $name . '-submissions.csv"',
+        ], EasyformsHelper::submissionsCsv($name));
     }
 
     /**

@@ -5,6 +5,10 @@
 {% set mode = parts[0]|default('') %}
 {% set edit_name = mode == 'edit' ? parts[1]|default('') : '' %}
 {% set is_editor = mode in ['add', 'edit'] %}
+{% set is_submissions = mode == 'submissions' %}
+{% set submissions_form = is_submissions ? parts[1]|default('') : '' %}
+{% set submission_id = is_submissions ? parts[2]|default('') : '' %}
+{% set is_submission_detail = is_submissions and submission_id != '' %}
 
 {% if is_editor %}
     {% set data = admin.data('easyform/' ~ edit_name) %}
@@ -15,11 +19,16 @@
         {% if is_editor %}
             <a class="button" href="{{ admin_route('/easyform') }}"><i class="fa fa-reply"></i> {{ "PLUGIN_EASYFORMS.BACK_TO_LIST"|t }}</a>
             <button class="button" type="submit" name="task" value="easyformSave" form="easyform-editor"><i class="fa fa-check"></i> {{ "PLUGIN_EASYFORMS.SAVE"|t }}</button>
+        {% elseif is_submission_detail %}
+            <a class="button" href="{{ admin_route('/easyform/submissions/' ~ submissions_form) }}"><i class="fa fa-reply"></i> {{ "PLUGIN_EASYFORMS.BACK_TO_SUBMISSIONS"|t }}</a>
+        {% elseif is_submissions %}
+            <a class="button" href="{{ admin_route('/easyform') }}"><i class="fa fa-reply"></i> {{ "PLUGIN_EASYFORMS.BACK_TO_LIST"|t }}</a>
+            <a class="button" href="{{ uri.addNonce(admin_route('/easyform/export/' ~ submissions_form) ~ '/task' ~ config.system.param_sep ~ 'easyformExport', 'admin-form', 'admin-nonce') }}"><i class="fa fa-download"></i> {{ "PLUGIN_EASYFORMS.EXPORT_CSV"|t }}</a>
         {% else %}
             <a class="button" href="{{ admin_route('/easyform/add') }}"><i class="fa fa-plus"></i> {{ "PLUGIN_EASYFORMS.ADD"|t }}</a>
         {% endif %}
     </div>
-    <h1><i class="fa fa-fw fa-wpforms"></i> {{ "PLUGIN_EASYFORMS.MENU"|t }}{% if mode == 'edit' %}: {{ edit_name }}{% endif %}</h1>
+    <h1><i class="fa fa-fw fa-wpforms"></i> {{ "PLUGIN_EASYFORMS.MENU"|t }}{% if mode == 'edit' %}: {{ edit_name }}{% elseif is_submissions %}: {{ "PLUGIN_EASYFORMS.SUBMISSIONS"|t }} ({{ submissions_form }}){% endif %}</h1>
 {% endblock %}
 
 {% block content %}
@@ -61,6 +70,7 @@
                         <button type="button" class="button small easyform-copy" data-copy="{{ f.shortcode }}"><i class="fa fa-clipboard"></i> {{ "PLUGIN_EASYFORMS.COPY"|t }}</button>
                     </td>
                     <td class="text-right">
+                        <a class="button" href="{{ admin_route('/easyform/submissions/' ~ f.name) }}"><i class="fa fa-inbox"></i> {{ "PLUGIN_EASYFORMS.SUBMISSIONS"|t }}</a>
                         <a class="button" href="{{ admin_route('/easyform/edit/' ~ f.name) }}"><i class="fa fa-edit"></i> {{ "PLUGIN_EASYFORMS.EDIT"|t }}</a>
                         <a class="button" href="{{ uri.addNonce(admin_route('/easyform/edit/' ~ f.name) ~ '/task' ~ config.system.param_sep ~ 'easyformDelete', 'admin-form', 'admin-nonce') }}"
                            onclick="return confirm('{{ "PLUGIN_EASYFORMS.CONFIRM_DELETE"|t }}')">
@@ -73,6 +83,61 @@
         </table>
         {% else %}
         <div class="notices info">{{ "PLUGIN_EASYFORMS.NO_FORMS"|t }}</div>
+        {% endif %}
+    {% elseif is_submission_detail %}
+        {% if easyforms_submission %}
+        <table class="table-responsive">
+            <tbody>
+                <tr><th>{{ "PLUGIN_EASYFORMS.COL_DATE"|t }}</th><td>{{ easyforms_submission.timestamp }}</td></tr>
+                <tr><th>{{ "PLUGIN_EASYFORMS.COL_STATUS"|t }}</th><td>{{ easyforms_submission.status }}</td></tr>
+                <tr><th>IP</th><td>{{ easyforms_submission.ip }}</td></tr>
+                {% for key, value in easyforms_submission.values %}
+                <tr><th>{{ key }}</th><td>{{ value }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="button-bar" style="margin-top: 1em;">
+            <a class="button" href="{{ uri.addNonce(admin_route('/easyform/submissions/' ~ submissions_form ~ '/' ~ submission_id) ~ '/task' ~ config.system.param_sep ~ 'easyformSubmissionDelete', 'admin-form', 'admin-nonce') }}"
+               onclick="return confirm('{{ "PLUGIN_EASYFORMS.CONFIRM_DELETE_SUBMISSION"|t }}')">
+                <i class="fa fa-trash"></i> {{ "PLUGIN_EASYFORMS.DELETE"|t }}
+            </a>
+        </div>
+        {% else %}
+        <div class="notices info">{{ "PLUGIN_EASYFORMS.NO_SUBMISSION"|t }}</div>
+        {% endif %}
+    {% elseif is_submissions %}
+        {% if easyforms_submissions %}
+        <table class="table-responsive">
+            <thead>
+                <tr>
+                    <th>{{ "PLUGIN_EASYFORMS.COL_DATE"|t }}</th>
+                    <th>{{ "PLUGIN_EASYFORMS.COL_STATUS"|t }}</th>
+                    <th>{{ "PLUGIN_EASYFORMS.COL_SUMMARY"|t }}</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in easyforms_submissions %}
+                <tr{% if s.status == 'unread' %} style="font-weight: bold;"{% endif %}>
+                    <td><a href="{{ admin_route('/easyform/submissions/' ~ submissions_form ~ '/' ~ s.id) }}">{{ s.timestamp }}</a></td>
+                    <td>{{ s.status }}</td>
+                    <td>{{ s.values|join(', ') }}</td>
+                    <td class="text-right">
+                        {% set next_status = s.status == 'unread' ? 'read' : 'unread' %}
+                        <a class="button small" href="{{ uri.addNonce(admin_route('/easyform/submissions/' ~ submissions_form ~ '/' ~ s.id) ~ '/task' ~ config.system.param_sep ~ 'easyformSubmissionStatus' ~ '/status' ~ config.system.param_sep ~ next_status, 'admin-form', 'admin-nonce') }}">
+                            {{ s.status == 'unread' ? "PLUGIN_EASYFORMS.MARK_READ"|t : "PLUGIN_EASYFORMS.MARK_UNREAD"|t }}
+                        </a>
+                        <a class="button small" href="{{ uri.addNonce(admin_route('/easyform/submissions/' ~ submissions_form ~ '/' ~ s.id) ~ '/task' ~ config.system.param_sep ~ 'easyformSubmissionDelete', 'admin-form', 'admin-nonce') }}"
+                           onclick="return confirm('{{ "PLUGIN_EASYFORMS.CONFIRM_DELETE_SUBMISSION"|t }}')">
+                            <i class="fa fa-trash"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="notices info">{{ "PLUGIN_EASYFORMS.NO_SUBMISSIONS"|t }}</div>
         {% endif %}
     {% else %}
         {% set blueprints = data.blueprints %}

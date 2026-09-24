@@ -6,8 +6,11 @@ namespace Grav\Plugin\Easyform;
 
 use Grav\Common\Filesystem\Folder;
 use Grav\Common\Grav;
+use Grav\Common\Uri;
 use Grav\Common\Utils;
 use Grav\Common\File\CompiledYamlFile;
+use Grav\Plugin\Form\Form;
+use RocketTheme\Toolbox\File\JsonFile;
 
 /**
  * Reads, writes and translates easyform definitions.
@@ -173,6 +176,18 @@ class EasyformsHelper
         foreach (array_keys(self::listForms()) as $name) {
             $config = self::loadRaw($name) ?? ['name' => $name];
             $config['shortcode'] = '[easyform name="' . $name . '"]';
+            $summary = self::submissionsSummary($name);
+            // A single JSON string rather than a nested object: this field
+            // is declared as a plain text field (see easyform-admin2.yaml)
+            // so admin2's generic list-row handling — proven to work for
+            // ordinary string/number/bool values — applies to it too,
+            // rather than relying on unverified behavior for a structured
+            // value. The custom field script parses it back out.
+            $config['submissions_summary'] = json_encode([
+                'name' => $name,
+                'total' => $summary['total'],
+                'unread' => $summary['unread'],
+            ], JSON_UNESCAPED_SLASHES);
             $list[] = $config;
         }
 
@@ -213,7 +228,10 @@ class EasyformsHelper
                 continue;
             }
 
-            unset($form['shortcode']);
+            // Both are computed read-only display values injected by
+            // listAllRaw() for the admin2 UI, not real form config — must
+            // not round-trip into the stored file.
+            unset($form['shortcode'], $form['submissions_summary']);
             $form['name'] = $name;
             self::save($name, $form);
             $submittedNames[] = $name;
@@ -234,7 +252,17 @@ class EasyformsHelper
      * @param array<string,mixed> $config
      * @return array<string,mixed>
      */
-    public static function buildGravForm(string $name, array $config): array
+    /**
+     * @param array<string,mixed>|null $postData The submitted `data[...]`
+     *   values, when rebuilding this form to validate a submission (as
+     *   opposed to a fresh GET render, where this is null). Used only to
+     *   decide whether a conditionally-shown field's `required` constraint
+     *   should apply: a field hidden by its trigger's current value must
+     *   not block submission, but that has to be decided against the
+     *   actual submitted trigger value, not just always dropped, or a
+     *   visible-and-empty required field would stop validating anything.
+     */
+    public static function buildGravForm(string $name, array $config, ?array $postData = null): array
     {
         $fields = [];
 
@@ -256,7 +284,31 @@ class EasyformsHelper
                 $field['placeholder'] = $fieldDef['placeholder'];
             }
 
-            if (Utils::isPositive($fieldDef['required'] ?? false)) {
+            $isRequired = Utils::isPositive($fieldDef['required'] ?? false);
+
+            $showIfField = trim((string) ($fieldDef['show_if_field'] ?? ''));
+            if ($showIfField !== '') {
+                $showIfValue = (string) ($fieldDef['show_if_value'] ?? '');
+                $field['datasets'] = [
+                    'easyform-show-if-field' => $showIfField,
+                    'easyform-show-if-value' => $showIfValue,
+                ];
+
+                // Only actually known once a submission is being validated
+                // (see the docblock above) — a fresh GET render leaves
+                // $isRequired as configured, since the field's initial
+                // visibility is a client-side concern handled by JS, and
+                // that same JS also drops the `required` attribute for
+                // whatever starts out hidden.
+                if ($isRequired && $postData !== null) {
+                    $submittedTrigger = (string) ($postData[$showIfField] ?? '');
+                    if ($submittedTrigger !== $showIfValue) {
+                        $isRequired = false;
+                    }
+                }
+            }
+
+            if ($isRequired) {
                 $field['validate'] = ['required' => true];
             }
 
@@ -298,11 +350,34 @@ class EasyformsHelper
             $process[] = ['email' => $emailParams];
         }
 
+        if (Utils::isPositive($config['autoresponder_enabled'] ?? false)) {
+            $recipientField = trim((string) ($config['autoresponder_field'] ?? '')) ?: 'email';
+            $autoresponderParams = [
+                'to' => '{{ form.value.' . $recipientField . ' }}',
+            ];
+            if (!empty($config['autoresponder_from'])) {
+                $autoresponderParams['from'] = $config['autoresponder_from'];
+            }
+            if (!empty($config['autoresponder_subject'])) {
+                $autoresponderParams['subject'] = $config['autoresponder_subject'];
+            }
+            if (!empty($config['autoresponder_message'])) {
+                $autoresponderParams['body'] = $config['autoresponder_message'];
+            }
+            // A second, independent `email` process entry — the form
+            // plugin dispatches every process action in order regardless
+            // of prior ones of the same kind, so this fires alongside (not
+            // instead of) the notification email above.
+            $process[] = ['email' => $autoresponderParams];
+        }
+
         if (Utils::isPositive($config['save_enabled'] ?? false)) {
-            $process[] = ['save' => [
-                'folder' => 'easyforms-submissions/' . $name,
-                'fileprefix' => $name . '-',
-            ]];
+            // Not the form plugin's own generic `save` action (which
+            // writes a flat text/YAML dump): a `call` into our own storage
+            // instead, so submissions come out as one structured JSON file
+            // each, addressable by id — required for the admin submissions
+            // list/detail views and CSV export to work at all.
+            $process[] = ['call' => [self::class, 'saveSubmission']];
         }
 
         $hasRedirect = !empty($config['redirect']);
@@ -323,6 +398,17 @@ class EasyformsHelper
             ],
             'process' => $process,
         ];
+    }
+
+    public static function hasConditionalFields(array $config): bool
+    {
+        foreach ((array) ($config['fields'] ?? []) as $fieldDef) {
+            if (is_array($fieldDef) && trim((string) ($fieldDef['show_if_field'] ?? '')) !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public static function antispamMethod(array $config): string
@@ -463,5 +549,245 @@ class EasyformsHelper
                 $process[] = ['captcha' => $captchaParams];
                 break;
         }
+    }
+
+    /*
+     * -----------------------------------------------------------------
+     * Submissions storage, listing, export
+     * -----------------------------------------------------------------
+     */
+
+    public static function submissionsDir(string $formName): string
+    {
+        $locator = Grav::instance()['locator'];
+        $dir = $locator->findResource('user-data://easyforms-submissions/' . $formName, true, true);
+
+        if (!is_dir($dir)) {
+            Folder::create($dir);
+        }
+
+        return $dir;
+    }
+
+    /**
+     * Zeroes the host part of an IP address (the last octet for IPv4, the
+     * last 80 bits for IPv6) rather than storing it in full — enough to
+     * keep coarse geo/abuse signal without identifying an individual
+     * visitor. Uses inet_pton/ntop and a bytewise mask rather than string
+     * splitting, since IPv6's "::" zero-run compression makes that
+     * unreliable.
+     */
+    public static function anonymizeIp(string $ip): string
+    {
+        $packed = @inet_pton($ip);
+        if ($packed === false) {
+            return '';
+        }
+
+        $mask = strlen($packed) === 4
+            ? "\xFF\xFF\xFF\x00"
+            : str_repeat("\xFF", 6) . str_repeat("\x00", 10);
+
+        $anonymized = $packed & $mask;
+        $result = inet_ntop($anonymized);
+
+        return $result !== false ? $result : '';
+    }
+
+    /**
+     * The `call` process action target for a form with `save_enabled` on
+     * (see applyAntispam()'s sibling in buildGravForm() for where that's
+     * wired up). Stores one JSON file per submission — structured, unlike
+     * the form plugin's own generic `save` action, so the admin submissions
+     * views and CSV export can actually parse individual entries.
+     */
+    public static function saveSubmission(Form $form): void
+    {
+        $name = $form->getName();
+        $config = self::loadRaw($name);
+        if ($config === null) {
+            return;
+        }
+
+        $values = [];
+        foreach ((array) ($config['fields'] ?? []) as $fieldDef) {
+            if (!is_array($fieldDef) || empty($fieldDef['name'])) {
+                continue;
+            }
+            $fieldName = (string) $fieldDef['name'];
+            $values[$fieldName] = $form->value($fieldName);
+        }
+
+        $id = date('YmdHis') . '-' . substr(uniqid('', true), -8);
+        $submission = [
+            'id' => $id,
+            'timestamp' => date('c'),
+            'status' => 'unread',
+            'ip' => self::anonymizeIp(Uri::ip()),
+            'values' => $values,
+        ];
+
+        $path = self::submissionsDir($name) . '/' . $id . '.json';
+        JsonFile::instance($path)->save($submission);
+
+        $retentionDays = (int) ($config['storage_retention_days'] ?? 0);
+        if ($retentionDays > 0) {
+            self::pruneExpiredSubmissions($name, $retentionDays);
+        }
+    }
+
+    /**
+     * @return array<int,array<string,mixed>> Newest first.
+     */
+    public static function listSubmissions(string $formName): array
+    {
+        $dir = self::submissionsDir($formName);
+        $list = [];
+
+        foreach (glob($dir . '/*.json') ?: [] as $path) {
+            $data = json_decode((string) file_get_contents($path), true);
+            if (is_array($data) && isset($data['id'])) {
+                $list[] = $data;
+            }
+        }
+
+        usort($list, static fn(array $a, array $b): int => strcmp(
+            (string) ($b['timestamp'] ?? ''),
+            (string) ($a['timestamp'] ?? '')
+        ));
+
+        return $list;
+    }
+
+    public static function loadSubmission(string $formName, string $id): ?array
+    {
+        foreach (self::listSubmissions($formName) as $submission) {
+            if (($submission['id'] ?? null) === $id) {
+                return $submission;
+            }
+        }
+
+        return null;
+    }
+
+    private static function findSubmissionFile(string $formName, string $id): ?string
+    {
+        if (!preg_match('/^[A-Za-z0-9._-]+$/', $id)) {
+            return null;
+        }
+
+        $path = self::submissionsDir($formName) . '/' . $id . '.json';
+
+        return is_file($path) ? $path : null;
+    }
+
+    public static function setSubmissionStatus(string $formName, string $id, string $status): bool
+    {
+        $path = self::findSubmissionFile($formName, $id);
+        if ($path === null) {
+            return false;
+        }
+
+        $data = json_decode((string) file_get_contents($path), true);
+        if (!is_array($data)) {
+            return false;
+        }
+
+        $data['status'] = $status;
+        JsonFile::instance($path)->save($data);
+
+        return true;
+    }
+
+    public static function deleteSubmission(string $formName, string $id): bool
+    {
+        $path = self::findSubmissionFile($formName, $id);
+
+        return $path !== null && @unlink($path);
+    }
+
+    /**
+     * @return array{total:int,unread:int}
+     */
+    public static function submissionsSummary(string $formName): array
+    {
+        $submissions = self::listSubmissions($formName);
+        $unread = 0;
+        foreach ($submissions as $submission) {
+            if (($submission['status'] ?? 'unread') === 'unread') {
+                $unread++;
+            }
+        }
+
+        return ['total' => count($submissions), 'unread' => $unread];
+    }
+
+    /**
+     * Deletes submissions older than $retentionDays, going by their stored
+     * timestamp (falling back to the file's own mtime if that's ever
+     * missing/unparsable). Called opportunistically on each new submission
+     * rather than through a cron job, which this plugin has no dependency
+     * on.
+     */
+    public static function pruneExpiredSubmissions(string $formName, int $retentionDays): void
+    {
+        if ($retentionDays <= 0) {
+            return;
+        }
+
+        $cutoff = time() - ($retentionDays * 86400);
+        $dir = self::submissionsDir($formName);
+
+        foreach (glob($dir . '/*.json') ?: [] as $path) {
+            $data = json_decode((string) file_get_contents($path), true);
+            $timestamp = is_array($data) ? strtotime((string) ($data['timestamp'] ?? '')) : false;
+            $mtime = $timestamp !== false ? $timestamp : (int) filemtime($path);
+
+            if ($mtime < $cutoff) {
+                @unlink($path);
+            }
+        }
+    }
+
+    /**
+     * UTF-8 CSV (with a BOM, and a semicolon delimiter for compatibility
+     * with Excel under a German locale, where a plain comma is read as the
+     * decimal separator instead of a field separator).
+     */
+    public static function submissionsCsv(string $formName): string
+    {
+        $config = self::loadRaw($formName) ?? [];
+        $fieldNames = [];
+        foreach ((array) ($config['fields'] ?? []) as $fieldDef) {
+            if (is_array($fieldDef) && !empty($fieldDef['name'])) {
+                $fieldNames[] = (string) $fieldDef['name'];
+            }
+        }
+
+        $handle = fopen('php://temp', 'r+');
+        fwrite($handle, "\xEF\xBB\xBF");
+        fputcsv($handle, array_merge(['Datum', 'Status', 'IP'], $fieldNames), ';');
+
+        foreach (self::listSubmissions($formName) as $submission) {
+            $row = [
+                (string) ($submission['timestamp'] ?? ''),
+                (string) ($submission['status'] ?? ''),
+                (string) ($submission['ip'] ?? ''),
+            ];
+            foreach ($fieldNames as $fieldName) {
+                $value = $submission['values'][$fieldName] ?? '';
+                if (is_array($value)) {
+                    $value = implode(', ', array_map('strval', $value));
+                }
+                $row[] = (string) $value;
+            }
+            fputcsv($handle, $row, ';');
+        }
+
+        rewind($handle);
+        $csv = stream_get_contents($handle);
+        fclose($handle);
+
+        return $csv !== false ? $csv : '';
     }
 }

@@ -77,6 +77,16 @@ form:
                   validate:
                     type: bool
 
+                .show_if_field:
+                  type: text
+                  label: PLUGIN_EASYFORMS.FIELD_SHOW_IF_FIELD
+                  help: PLUGIN_EASYFORMS.FIELD_SHOW_IF_FIELD_HELP
+
+                .show_if_value:
+                  type: text
+                  label: PLUGIN_EASYFORMS.FIELD_SHOW_IF_VALUE
+                  help: PLUGIN_EASYFORMS.FIELD_SHOW_IF_VALUE_HELP
+
                 .options:
                   type: list
                   label: PLUGIN_EASYFORMS.FIELD_OPTIONS
@@ -180,6 +190,45 @@ form:
               label: PLUGIN_EASYFORMS.FIELD_ANTISPAM_SECRET_KEY
               help: PLUGIN_EASYFORMS.FIELD_ANTISPAM_SECRET_KEY_HELP
 
+        autoresponder:
+          type: tab
+          title: PLUGIN_EASYFORMS.TAB_AUTORESPONDER
+
+          fields:
+            autoresponder_enabled:
+              type: toggle
+              label: PLUGIN_EASYFORMS.FIELD_AUTORESPONDER_ENABLED
+              help: PLUGIN_EASYFORMS.FIELD_AUTORESPONDER_ENABLED_HELP
+              highlight: 1
+              default: 0
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            autoresponder_field:
+              type: text
+              label: PLUGIN_EASYFORMS.FIELD_AUTORESPONDER_FIELD
+              help: PLUGIN_EASYFORMS.FIELD_AUTORESPONDER_FIELD_HELP
+              placeholder: email
+
+            autoresponder_from:
+              type: text
+              label: PLUGIN_EASYFORMS.FIELD_FROM
+              help: PLUGIN_EASYFORMS.FIELD_FROM_HELP
+              placeholder: 'name@domain.de'
+
+            autoresponder_subject:
+              type: text
+              label: PLUGIN_EASYFORMS.FIELD_SUBJECT
+
+            autoresponder_message:
+              type: textarea
+              label: PLUGIN_EASYFORMS.FIELD_AUTORESPONDER_MESSAGE
+              help: PLUGIN_EASYFORMS.FIELD_AUTORESPONDER_MESSAGE_HELP
+              default: PLUGIN_EASYFORMS.DEFAULT_AUTORESPONDER_MESSAGE
+
         actions:
           type: tab
           title: PLUGIN_EASYFORMS.TAB_ACTIONS
@@ -219,6 +268,15 @@ form:
                 0: PLUGIN_ADMIN.DISABLED
               validate:
                 type: bool
+
+            storage_retention_days:
+              type: text
+              label: PLUGIN_EASYFORMS.FIELD_RETENTION_DAYS
+              help: PLUGIN_EASYFORMS.FIELD_RETENTION_DAYS_HELP
+              placeholder: '0'
+              validate:
+                type: int
+                min: 0
 
             delete_requested:
               type: toggle

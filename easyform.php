@@ -15,6 +15,7 @@ use Grav\Common\Uri;
 use Grav\Common\Utils;
 use Grav\Events\PermissionsRegisterEvent;
 use Grav\Framework\Acl\PermissionsReader;
+use Grav\Framework\Psr7\Response;
 use Grav\Plugin\Api\PermissionResolver;
 use Grav\Plugin\Easyform\EasyformsApiController;
 use Grav\Plugin\Easyform\EasyformsHelper;
@@ -36,6 +37,76 @@ use Twig\TwigFunction;
  */
 class EasyformPlugin extends Plugin
 {
+    /**
+     * Shows/hides a field's whole row (label + input, i.e. .form-field —
+     * verified against the actual forms/default/field.html.twig markup) based
+     * on another field's current value, and drops/restores `required` to
+     * match, so a hidden field never blocks submission. Delegates on the
+     * form's `change` event rather than binding one trigger element, since a
+     * radio-button trigger is several inputs sharing one name and the first
+     * match alone wouldn't see the others' changes.
+     *
+     * Mirrors the server-side required-stripping in
+     * EasyformsHelper::buildGravForm() (keyed off $postData), which is what
+     * actually enforces this on submission — this script only keeps the
+     * visible UI honest and avoids pointless required-but-hidden prompts.
+     */
+    private const CONDITIONAL_FIELDS_SCRIPT = <<<'JS'
+<script>
+(function () {
+    var dependents = document.querySelectorAll('[data-easyform-show-if-field]');
+    if (!dependents.length) {
+        return;
+    }
+
+    function triggerValue(form, name) {
+        var els = form.querySelectorAll('[name="data[' + name + ']"]');
+        if (!els.length) {
+            return '';
+        }
+        if (els.length === 1) {
+            var el = els[0];
+            return el.type === 'checkbox' ? (el.checked ? (el.value || '1') : '') : el.value;
+        }
+        for (var i = 0; i < els.length; i++) {
+            if (els[i].checked) {
+                return els[i].value;
+            }
+        }
+        return '';
+    }
+
+    function sync(input) {
+        var form = input.closest('form');
+        var wrapper = input.closest('.form-field');
+        if (!form || !wrapper) {
+            return;
+        }
+        var name = input.getAttribute('data-easyform-show-if-field');
+        var expected = input.getAttribute('data-easyform-show-if-value') || '';
+        var visible = triggerValue(form, name) === expected;
+        wrapper.style.display = visible ? '' : 'none';
+        if (visible) {
+            if (input.dataset.easyformRequired === '1') {
+                input.setAttribute('required', 'required');
+            }
+        } else if (input.hasAttribute('required')) {
+            input.dataset.easyformRequired = '1';
+            input.removeAttribute('required');
+        }
+    }
+
+    dependents.forEach(function (input) {
+        sync(input);
+        var form = input.closest('form');
+        if (form) {
+            form.addEventListener('change', function () { sync(input); });
+        }
+    });
+})();
+</script>
+JS;
+
     public static function getSubscribedEvents(): array
     {
         return [
@@ -92,6 +163,7 @@ class EasyformPlugin extends Plugin
         $routes->get('/easyform', [$controller, 'show']);
         $routes->patch('/easyform', [$controller, 'save']);
         $routes->get('/easyform/_badge', [$controller, 'badge']);
+        $routes->get('/easyform/export/{name}', [$controller, 'export']);
     }
 
     public function onApiSidebarItems(Event $event): void
@@ -260,6 +332,18 @@ class EasyformPlugin extends Plugin
         if (EasyformsUpdater::getRepo() !== '') {
             $twig->twig_vars['easyforms_update'] = EasyformsUpdater::checkLatestRelease();
         }
+
+        $parts = array_values(array_filter(explode('/', trim((string) $admin->route, '/'))));
+        if (($parts[0] ?? '') === 'submissions' && isset($parts[1]) && EasyformsHelper::exists($parts[1])) {
+            $formName = $parts[1];
+            $twig->twig_vars['easyforms_submissions_form'] = $formName;
+
+            if (isset($parts[2])) {
+                $twig->twig_vars['easyforms_submission'] = EasyformsHelper::loadSubmission($formName, $parts[2]);
+            } else {
+                $twig->twig_vars['easyforms_submissions'] = EasyformsHelper::listSubmissions($formName);
+            }
+        }
     }
 
     /**
@@ -313,6 +397,15 @@ class EasyformPlugin extends Plugin
             $event->stopPropagation();
         } elseif ($method === 'taskEasyformUpdate') {
             $this->taskEasyformUpdate($controller);
+            $event->stopPropagation();
+        } elseif ($method === 'taskEasyformSubmissionStatus') {
+            $this->taskEasyformSubmissionStatus($controller);
+            $event->stopPropagation();
+        } elseif ($method === 'taskEasyformSubmissionDelete') {
+            $this->taskEasyformSubmissionDelete($controller);
+            $event->stopPropagation();
+        } elseif ($method === 'taskEasyformExport') {
+            $this->taskEasyformExport($controller);
             $event->stopPropagation();
         }
     }
@@ -390,6 +483,89 @@ class EasyformPlugin extends Plugin
         $result = EasyformsUpdater::applyUpdate();
         $controller->setMessage($result['message'], $result['success'] ? 'info' : 'error');
         $controller->setRedirect('/easyform');
+    }
+
+    protected function taskEasyformSubmissionStatus($controller): void
+    {
+        if (!$controller->authorizeTask('submissions', ['admin.easyform', 'admin.super', 'api.easyform', 'api.super'])) {
+            return;
+        }
+
+        [$name, $id] = $this->parseSubmissionRoute($controller->route);
+        if ($name === null || $id === null) {
+            $controller->setRedirect('/easyform');
+
+            return;
+        }
+
+        $status = (string) ($this->grav['uri']->param('status') ?: 'read');
+        if (!in_array($status, ['read', 'unread'], true)) {
+            $status = 'read';
+        }
+
+        EasyformsHelper::setSubmissionStatus($name, $id, $status);
+        $controller->setRedirect('/easyform/submissions/' . $name);
+    }
+
+    protected function taskEasyformSubmissionDelete($controller): void
+    {
+        if (!$controller->authorizeTask('submissions', ['admin.easyform', 'admin.super', 'api.easyform', 'api.super'])) {
+            return;
+        }
+
+        [$name, $id] = $this->parseSubmissionRoute($controller->route);
+        if ($name === null || $id === null) {
+            $controller->setRedirect('/easyform');
+
+            return;
+        }
+
+        EasyformsHelper::deleteSubmission($name, $id);
+        $controller->setMessage($this->grav['language']->translate('PLUGIN_EASYFORMS.SUBMISSION_DELETED'), 'info');
+        $controller->setRedirect('/easyform/submissions/' . $name);
+    }
+
+    /**
+     * @return array{0:string|null,1:string|null}
+     */
+    private function parseSubmissionRoute(string $route): array
+    {
+        $parts = explode('/', trim($route, '/'));
+        if (($parts[0] ?? '') !== 'submissions' || !isset($parts[1], $parts[2]) || !EasyformsHelper::exists($parts[1])) {
+            return [null, null];
+        }
+
+        return [$parts[1], $parts[2]];
+    }
+
+    /**
+     * GET-triggered file download, so this closes the request with a raw
+     * CSV response directly rather than the usual admin redirect —
+     * onAdminTaskExecute's return value isn't wired to do that for a task
+     * the core AdminController doesn't itself define.
+     */
+    protected function taskEasyformExport($controller): void
+    {
+        if (!$controller->authorizeTask('export', ['admin.easyform', 'admin.super', 'api.easyform', 'api.super'])) {
+            return;
+        }
+
+        $route = trim((string) $controller->route, '/');
+        $name = Utils::startsWith($route, 'export/') ? substr($route, strlen('export/')) : '';
+
+        if ($name === '' || !EasyformsHelper::exists($name)) {
+            $controller->setRedirect('/easyform');
+
+            return;
+        }
+
+        $csv = EasyformsHelper::submissionsCsv($name);
+        $response = new Response(200, [
+            'Content-Type' => 'text/csv; charset=utf-8',
+            'Content-Disposition' => 'attachment; filename="' . $name . '-submissions.csv"',
+        ], $csv);
+
+        $this->grav->close($response);
     }
 
     /*
@@ -472,6 +648,10 @@ class EasyformPlugin extends Plugin
                 . 'z-index:-1!important;}</style>' . $html;
         }
 
+        if ($config && EasyformsHelper::hasConditionalFields($config)) {
+            $html .= self::CONDITIONAL_FIELDS_SCRIPT;
+        }
+
         return $html;
     }
 
@@ -509,7 +689,8 @@ class EasyformPlugin extends Plugin
             return;
         }
 
-        $formArray = EasyformsHelper::buildGravForm($name, $config);
+        $postData = (array) ($uri->post('data') ?? []);
+        $formArray = EasyformsHelper::buildGravForm($name, $config, $postData);
         $form = $forms->createPageForm($page, $name, $formArray);
         if ($form instanceof Form) {
             $forms->setActiveForm($form);
