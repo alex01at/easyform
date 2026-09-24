@@ -175,6 +175,22 @@ class EasyformsHelper
 
         foreach (array_keys(self::listForms()) as $name) {
             $config = self::loadRaw($name) ?? ['name' => $name];
+
+            // admin2's collapsed list-row label is the first non-empty string
+            // value found in this array, in key order (confirmed by reading
+            // the list field's row-label function in the compiled admin2
+            // bundle) — there is no separate "label field" setting. `name`
+            // (the technical slug) would otherwise win that race just by
+            // being declared first in the blueprint, even though the form's
+            // title is what a non-technical user actually recognizes it by.
+            // Moving `title` to the front here, only when set, makes it win
+            // instead, without touching the on-disk field order or the
+            // blueprint.
+            $title = trim((string) ($config['title'] ?? ''));
+            if ($title !== '') {
+                $config = ['title' => $title] + $config;
+            }
+
             $config['shortcode'] = '[easyform name="' . $name . '"]';
             $summary = self::submissionsSummary($name);
             // A single JSON string rather than a nested object: this field
@@ -278,6 +294,17 @@ class EasyformsHelper
                 'name' => $fieldName,
                 'label' => (string) ($fieldDef['label'] ?? ucfirst($fieldName)),
                 'type' => $type,
+                // forms/default/field.html.twig runs `field.description|t`
+                // unconditionally (unlike help/placeholder/title, which are
+                // all guarded by an `if`), and the API/admin2 render path's
+                // `t` filter (Grav\Plugin\Api\AdminProxy::translate(), typed
+                // to always return string) throws on a null argument where
+                // the normal frontend/classic-admin Language::translate()
+                // tolerates one — only surfaced once the preview route
+                // (EasyformsApiController::preview()) exercised this same
+                // template through that code path. An explicit '' avoids it
+                // everywhere without depending on which `t` is bound.
+                'description' => '',
             ];
 
             if (!empty($fieldDef['placeholder'])) {
@@ -473,6 +500,7 @@ class EasyformsHelper
                     'name' => self::honeypotFieldName($config),
                     'label' => '',
                     'type' => 'honeypot',
+                    'description' => '',
                 ];
                 break;
 
@@ -503,6 +531,7 @@ class EasyformsHelper
                     'name' => 'antispam_math',
                     'label' => $label,
                     'type' => 'text',
+                    'description' => '',
                     'validate' => ['required' => true],
                 ];
                 break;
@@ -526,6 +555,7 @@ class EasyformsHelper
                     'label' => '',
                     'type' => 'captcha',
                     'provider' => $method,
+                    'description' => '',
                 ];
                 if ($siteKey !== '') {
                     $field[$method . '_site_key'] = $siteKey;
@@ -789,5 +819,258 @@ class EasyformsHelper
         fclose($handle);
 
         return $csv !== false ? $csv : '';
+    }
+
+    /**
+     * Shows/hides a field's whole row (label + input, i.e. .form-field —
+     * verified against the actual forms/default/field.html.twig markup) based
+     * on another field's current value, and drops/restores `required` to
+     * match, so a hidden field never blocks submission. Delegates on the
+     * form's `change` event rather than binding one trigger element, since a
+     * radio-button trigger is several inputs sharing one name and the first
+     * match alone wouldn't see the others' changes.
+     *
+     * Mirrors the server-side required-stripping in buildGravForm() (keyed
+     * off $postData), which is what actually enforces this on submission —
+     * this script only keeps the visible UI honest and avoids pointless
+     * required-but-hidden prompts.
+     */
+    private const CONDITIONAL_FIELDS_SCRIPT = <<<'JS'
+<script>
+(function () {
+    var dependents = document.querySelectorAll('[data-easyform-show-if-field]');
+    if (!dependents.length) {
+        return;
+    }
+
+    function triggerValue(form, name) {
+        var els = form.querySelectorAll('[name="data[' + name + ']"]');
+        if (!els.length) {
+            return '';
+        }
+        if (els.length === 1) {
+            var el = els[0];
+            return el.type === 'checkbox' ? (el.checked ? (el.value || '1') : '') : el.value;
+        }
+        for (var i = 0; i < els.length; i++) {
+            if (els[i].checked) {
+                return els[i].value;
+            }
+        }
+        return '';
+    }
+
+    function sync(input) {
+        var form = input.closest('form');
+        var wrapper = input.closest('.form-field');
+        if (!form || !wrapper) {
+            return;
+        }
+        var name = input.getAttribute('data-easyform-show-if-field');
+        var expected = input.getAttribute('data-easyform-show-if-value') || '';
+        var visible = triggerValue(form, name) === expected;
+        wrapper.style.display = visible ? '' : 'none';
+        if (visible) {
+            if (input.dataset.easyformRequired === '1') {
+                input.setAttribute('required', 'required');
+            }
+        } else if (input.hasAttribute('required')) {
+            input.dataset.easyformRequired = '1';
+            input.removeAttribute('required');
+        }
+    }
+
+    dependents.forEach(function (input) {
+        sync(input);
+        var form = input.closest('form');
+        if (form) {
+            form.addEventListener('change', function () { sync(input); });
+        }
+    });
+})();
+</script>
+JS;
+
+    /**
+     * Renders a stored easyform for the current page, reusing the official
+     * form plugin's own `forms/form.html.twig` template. Shared by the
+     * frontend shortcode/Twig function (EasyformPlugin::renderForm(), which
+     * just delegates here) and the admin preview routes below, which render
+     * the exact same markup so a preview is never out of sync with the real
+     * embed.
+     *
+     * If the `form` plugin's onPageInitialized() (see EasyformPlugin) already
+     * built and processed this form as the request's active form — i.e. this
+     * render follows a submission — that exact instance is reused so its
+     * post-validation status/message make it into the output. Building a
+     * fresh Form here instead would silently discard the just-processed
+     * result and render what looks like an untouched, never-submitted form.
+     */
+    public static function renderFormHtml(?string $name): string
+    {
+        if (!$name) {
+            return '';
+        }
+
+        $grav = Grav::instance();
+
+        /** @var \Grav\Common\Page\Interfaces\PageInterface|null $page */
+        $page = $grav['page'] ?? null;
+        if (!$page) {
+            return '';
+        }
+
+        // A normal frontend/admin-classic page render always has Twig
+        // initialized by this point; an API request (the admin2 preview
+        // route) never triggers that on its own. init() is a no-op once
+        // already initialized, so this is safe either way.
+        $grav['twig']->init();
+
+        $forms = $grav['forms'];
+        $active = $forms->getActiveForm();
+
+        if ($active instanceof Form && $active->getName() === $name) {
+            $form = $active;
+        } else {
+            $config = self::loadRaw($name);
+            if (!$config) {
+                return '';
+            }
+
+            $formArray = self::buildGravForm($name, $config);
+            $form = $forms->createPageForm($page, $name, $formArray);
+            if (!$form) {
+                return '';
+            }
+        }
+
+        // A rendered form embeds a one-time nonce; never let the page cache
+        // serve a stale one to the next visitor. modifyHeader() writes
+        // straight to the page's internal header object with no lazy-load —
+        // harmless for a normal frontend page, whose header is already
+        // loaded by the time content is rendered, but the site root Page the
+        // admin preview route hands in (see EasyformsApiController::preview())
+        // has no backing content file, so even header()'s own lazy-load (which
+        // reads the file when the header is still unset) leaves it null.
+        // Forcing a value through the header($var) setter guarantees an
+        // object exists either way.
+        if (!$page->header()) {
+            $page->header(['title' => '']);
+        }
+        $page->modifyHeader('never_cache_twig', true);
+
+        // The form template (third-party `form` plugin) runs `field.description|t`
+        // unconditionally on every field, including hidden bookkeeping fields
+        // (nonce, unique-id) the form plugin injects itself — none of which
+        // set a description, so it's null there regardless of anything this
+        // plugin builds. Core's `t` filter (GravExtension::translate())
+        // silently tolerates a null lookup via the normal Language::translate()
+        // path, but routes through Grav\Plugin\Api\AdminProxy::translate()
+        // instead whenever $grav['admin'] is set — which the API plugin does
+        // for the whole request, not just admin-authored templates — and that
+        // proxy is typed to always return string, so it fatals on the same
+        // null. Unsetting it only around this one render call restores the
+        // safe path without affecting anything else the request still needs
+        // $grav['admin'] for.
+        $hadAdmin = isset($grav['admin']);
+        $adminValue = $hadAdmin ? $grav['admin'] : null;
+        if ($hadAdmin) {
+            unset($grav['admin']);
+        }
+        try {
+            $html = $grav['twig']->processTemplate('forms/form.html.twig', ['form' => $form]);
+        } finally {
+            if ($hadAdmin) {
+                $grav['admin'] = $adminValue;
+            }
+        }
+
+        $config = self::loadRaw($name);
+        if ($config && self::antispamMethod($config) === 'honeypot') {
+            // The form plugin's own honeypot field hides itself with
+            // visibility:hidden, which some bots specifically look for and
+            // skip filling in (defeating the trap). Positioning it off-screen
+            // instead, without display:none, is a more effective disguise —
+            // overridden here rather than in the honeypot field's own
+            // template, which belongs to the (third-party) form plugin.
+            $html = '<style>.form-honeybear{opacity:0!important;position:absolute!important;'
+                . 'top:0!important;left:-9999px!important;height:0!important;width:0!important;'
+                . 'z-index:-1!important;}</style>' . $html;
+        }
+
+        if ($config && self::hasConditionalFields($config)) {
+            $html .= self::CONDITIONAL_FIELDS_SCRIPT;
+        }
+
+        return $html;
+    }
+
+    /**
+     * Standalone preview page for a stored form: the exact same markup
+     * renderFormHtml() produces for the real embed, wrapped in a plain HTML
+     * shell with a banner, opened in a new tab from the admin. Deliberately
+     * shows only the last *saved* state — it reads straight off disk via
+     * loadRaw(), the same as the live embed does — with the banner telling
+     * an editor to save first if they don't see their latest changes, and
+     * disables every field/button via a wrapping <fieldset disabled> so the
+     * preview can never be used to actually submit the form (nothing here
+     * runs the real validate/email/save pipeline; a fieldset is the simplest
+     * way to guarantee that without a second, unvalidated code path).
+     */
+    public static function renderPreviewHtml(string $name): string
+    {
+        $grav = Grav::instance();
+        $language = $grav['language'];
+
+        if (!self::exists($name)) {
+            return self::previewShell(
+                $name,
+                '<p>' . htmlspecialchars($language->translate('PLUGIN_EASYFORMS.PREVIEW_NOT_SAVED'), ENT_QUOTES) . '</p>'
+            );
+        }
+
+        $formHtml = self::renderFormHtml($name);
+        if ($formHtml === '') {
+            return self::previewShell(
+                $name,
+                '<p>' . htmlspecialchars($language->translate('PLUGIN_EASYFORMS.PREVIEW_ERROR'), ENT_QUOTES) . '</p>'
+            );
+        }
+
+        return self::previewShell($name, '<fieldset disabled style="border:0;margin:0;padding:0;">' . $formHtml . '</fieldset>');
+    }
+
+    private static function previewShell(string $name, string $bodyHtml): string
+    {
+        $grav = Grav::instance();
+        $language = $grav['language'];
+
+        $title = htmlspecialchars(
+            $language->translate('PLUGIN_EASYFORMS.PREVIEW') . ': ' . $name,
+            ENT_QUOTES
+        );
+        $banner = htmlspecialchars($language->translate('PLUGIN_EASYFORMS.PREVIEW_BANNER'), ENT_QUOTES);
+        $lang = htmlspecialchars((string) $language->getActive() ?: 'en', ENT_QUOTES);
+
+        return <<<HTML
+<!DOCTYPE html>
+<html lang="{$lang}">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex,nofollow">
+<title>{$title}</title>
+<style>
+body{font-family:system-ui,-apple-system,sans-serif;max-width:640px;margin:2rem auto;padding:0 1rem;color:#222;}
+.easyform-preview-banner{background:#fff3cd;border:1px solid #ffe69c;color:#664d03;padding:.75rem 1rem;border-radius:.375rem;margin-bottom:1.5rem;font-size:.9rem;}
+fieldset{opacity:.85;}
+button,input,select,textarea{cursor:not-allowed !important;}
+</style>
+</head>
+<body>
+<div class="easyform-preview-banner">{$banner}</div>
+{$bodyHtml}
+</body>
+</html>
+HTML;
     }
 }

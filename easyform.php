@@ -37,76 +37,6 @@ use Twig\TwigFunction;
  */
 class EasyformPlugin extends Plugin
 {
-    /**
-     * Shows/hides a field's whole row (label + input, i.e. .form-field —
-     * verified against the actual forms/default/field.html.twig markup) based
-     * on another field's current value, and drops/restores `required` to
-     * match, so a hidden field never blocks submission. Delegates on the
-     * form's `change` event rather than binding one trigger element, since a
-     * radio-button trigger is several inputs sharing one name and the first
-     * match alone wouldn't see the others' changes.
-     *
-     * Mirrors the server-side required-stripping in
-     * EasyformsHelper::buildGravForm() (keyed off $postData), which is what
-     * actually enforces this on submission — this script only keeps the
-     * visible UI honest and avoids pointless required-but-hidden prompts.
-     */
-    private const CONDITIONAL_FIELDS_SCRIPT = <<<'JS'
-<script>
-(function () {
-    var dependents = document.querySelectorAll('[data-easyform-show-if-field]');
-    if (!dependents.length) {
-        return;
-    }
-
-    function triggerValue(form, name) {
-        var els = form.querySelectorAll('[name="data[' + name + ']"]');
-        if (!els.length) {
-            return '';
-        }
-        if (els.length === 1) {
-            var el = els[0];
-            return el.type === 'checkbox' ? (el.checked ? (el.value || '1') : '') : el.value;
-        }
-        for (var i = 0; i < els.length; i++) {
-            if (els[i].checked) {
-                return els[i].value;
-            }
-        }
-        return '';
-    }
-
-    function sync(input) {
-        var form = input.closest('form');
-        var wrapper = input.closest('.form-field');
-        if (!form || !wrapper) {
-            return;
-        }
-        var name = input.getAttribute('data-easyform-show-if-field');
-        var expected = input.getAttribute('data-easyform-show-if-value') || '';
-        var visible = triggerValue(form, name) === expected;
-        wrapper.style.display = visible ? '' : 'none';
-        if (visible) {
-            if (input.dataset.easyformRequired === '1') {
-                input.setAttribute('required', 'required');
-            }
-        } else if (input.hasAttribute('required')) {
-            input.dataset.easyformRequired = '1';
-            input.removeAttribute('required');
-        }
-    }
-
-    dependents.forEach(function (input) {
-        sync(input);
-        var form = input.closest('form');
-        if (form) {
-            form.addEventListener('change', function () { sync(input); });
-        }
-    });
-})();
-</script>
-JS;
-
     public static function getSubscribedEvents(): array
     {
         return [
@@ -164,6 +94,7 @@ JS;
         $routes->patch('/easyform', [$controller, 'save']);
         $routes->get('/easyform/_badge', [$controller, 'badge']);
         $routes->get('/easyform/export/{name}', [$controller, 'export']);
+        $routes->get('/easyform/preview/{name}', [$controller, 'preview']);
     }
 
     public function onApiSidebarItems(Event $event): void
@@ -407,6 +338,9 @@ JS;
         } elseif ($method === 'taskEasyformExport') {
             $this->taskEasyformExport($controller);
             $event->stopPropagation();
+        } elseif ($method === 'taskEasyformPreview') {
+            $this->taskEasyformPreview($controller);
+            $event->stopPropagation();
         }
     }
 
@@ -568,6 +502,36 @@ JS;
         $this->grav->close($response);
     }
 
+    /**
+     * Opens a standalone rendered preview of a form (read-only, not
+     * actually submittable — see EasyformsHelper::renderPreviewHtml()) in a
+     * new tab. Closes with a raw HTML response for the same reason
+     * taskEasyformExport does: onAdminTaskExecute's event-based dispatch
+     * doesn't auto-close a returned Response the way the core
+     * AdminController's own direct-method-dispatch path does.
+     */
+    protected function taskEasyformPreview($controller): void
+    {
+        if (!$controller->authorizeTask('preview', ['admin.easyform', 'admin.super', 'api.easyform', 'api.super'])) {
+            return;
+        }
+
+        $route = trim((string) $controller->route, '/');
+        $name = Utils::startsWith($route, 'preview/') ? substr($route, strlen('preview/')) : '';
+
+        if ($name === '' || !EasyformsHelper::isValidName($name)) {
+            $controller->setRedirect('/easyform');
+
+            return;
+        }
+
+        $response = new Response(200, [
+            'Content-Type' => 'text/html; charset=utf-8',
+        ], EasyformsHelper::renderPreviewHtml($name));
+
+        $this->grav->close($response);
+    }
+
     /*
      * -----------------------------------------------------------------
      * Frontend: shortcode, Twig function, form submission
@@ -589,70 +553,14 @@ JS;
     }
 
     /**
-     * Renders a stored easyform for the current page, reusing the official
-     * form plugin's own `forms/form.html.twig` template.
-     *
-     * If onPageInitialized() (below) already built and processed this form
-     * as the request's active form — i.e. this render follows a submission —
-     * that exact instance is reused so its post-validation status/message
-     * make it into the output. Building a fresh Form here instead, as this
-     * method used to, would silently discard the just-processed result and
-     * render what looks like an untouched, never-submitted form.
+     * Renders a stored easyform for the current page. The actual rendering
+     * lives in EasyformsHelper::renderFormHtml() now, shared with the admin
+     * preview routes below, so a preview is always exactly what the real
+     * embed would show.
      */
     public function renderForm(?string $name): string
     {
-        if (!$name) {
-            return '';
-        }
-
-        /** @var PageInterface|null $page */
-        $page = $this->grav['page'] ?? null;
-        if (!$page) {
-            return '';
-        }
-
-        $forms = $this->grav['forms'];
-        $active = $forms->getActiveForm();
-
-        if ($active instanceof Form && $active->getName() === $name) {
-            $form = $active;
-        } else {
-            $config = EasyformsHelper::loadRaw($name);
-            if (!$config) {
-                return '';
-            }
-
-            $formArray = EasyformsHelper::buildGravForm($name, $config);
-            $form = $forms->createPageForm($page, $name, $formArray);
-            if (!$form) {
-                return '';
-            }
-        }
-
-        // A rendered form embeds a one-time nonce; never let the page cache
-        // serve a stale one to the next visitor.
-        $page->modifyHeader('never_cache_twig', true);
-
-        $html = $this->grav['twig']->processTemplate('forms/form.html.twig', ['form' => $form]);
-
-        $config = EasyformsHelper::loadRaw($name);
-        if ($config && EasyformsHelper::antispamMethod($config) === 'honeypot') {
-            // The form plugin's own honeypot field hides itself with
-            // visibility:hidden, which some bots specifically look for and
-            // skip filling in (defeating the trap). Positioning it off-screen
-            // instead, without display:none, is a more effective disguise —
-            // overridden here rather than in the honeypot field's own
-            // template, which belongs to the (third-party) form plugin.
-            $html = '<style>.form-honeybear{opacity:0!important;position:absolute!important;'
-                . 'top:0!important;left:-9999px!important;height:0!important;width:0!important;'
-                . 'z-index:-1!important;}</style>' . $html;
-        }
-
-        if ($config && EasyformsHelper::hasConditionalFields($config)) {
-            $html .= self::CONDITIONAL_FIELDS_SCRIPT;
-        }
-
-        return $html;
+        return EasyformsHelper::renderFormHtml($name);
     }
 
     /**

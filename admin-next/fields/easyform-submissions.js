@@ -1,16 +1,20 @@
 /**
  * easyform-submissions — read-only custom field showing a form's
- * submission counts plus a CSV download button, for the admin2 "Forms"
- * list page (one row per form).
+ * submission counts plus CSV-export and preview buttons, for the admin2
+ * "Forms" list page (one row per form).
  *
- * A plain link can't download the export directly: admin2's login never
+ * A plain link can't reach either action directly: admin2's login never
  * adopts the shared front-end session (it deliberately restores whatever
  * session existed before authenticating, to avoid booting a front-end
  * visitor sharing the same browser), so a normal navigation to an API
- * route has no credentials to send. Downloading via fetch() with the same
- * X-API-Token header admin2's own JS uses, then turning the response into
- * a Blob, is the same pattern flex-objects.js and save-redirect.js (both
- * shipped by the flex-objects plugin) use for their own custom fields.
+ * route has no credentials to send. Fetching with the same X-API-Token
+ * header admin2's own JS uses, then turning the response into a Blob, is
+ * the same pattern flex-objects.js and save-redirect.js (both shipped by
+ * the flex-objects plugin) use for their own custom fields. The export
+ * button turns its blob into a file download; the preview button opens a
+ * window synchronously (before the await) and only points it at the blob
+ * once fetched, since a browser's popup blocker treats window.open()
+ * called after an async gap as no longer tied to the click that started it.
  *
  * The field's value is a JSON string (not a nested object) encoding
  * {name, total, unread} for this row, produced server-side by
@@ -95,6 +99,36 @@ class EasyformSubmissionsField extends HTMLElement {
         button.textContent = originalText;
     }
 
+    async _preview(name, button) {
+        const originalText = button.textContent;
+        // Opened synchronously, still inside the click's user-activation
+        // window — filled in below once the fetch resolves, since setting
+        // .href on an already-open window isn't subject to the popup blocker.
+        const win = window.open('', '_blank');
+        button.disabled = true;
+        button.textContent = '...';
+        try {
+            const response = await fetch(this._apiUrl(`/easyform/preview/${encodeURIComponent(name)}`), {
+                headers: this._headers(),
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            if (win) {
+                win.location.href = url;
+            }
+        } catch (e) {
+            if (win) win.close();
+            button.textContent = 'Error';
+            setTimeout(() => { button.textContent = originalText; }, 2000);
+            return;
+        }
+        button.disabled = false;
+        button.textContent = originalText;
+    }
+
     _render() {
         const { name, total, unread } = this._parsed();
         const countText = unread > 0 ? `${total} (${unread} unread)` : String(total);
@@ -102,15 +136,23 @@ class EasyformSubmissionsField extends HTMLElement {
         this.innerHTML = `
             <div style="display:flex;align-items:center;gap:10px;font-family:inherit;">
                 <span>${countText}</span>
-                <button type="button" class="button small" ${total === 0 ? 'disabled' : ''}>
+                <button type="button" class="button small" ${name ? '' : 'disabled'} data-action="preview">
+                    Vorschau
+                </button>
+                <button type="button" class="button small" ${total === 0 ? 'disabled' : ''} data-action="export">
                     Export CSV
                 </button>
             </div>
         `;
 
-        const button = this.querySelector('button');
-        if (button && total > 0) {
-            button.addEventListener('click', () => this._download(name, button));
+        const previewButton = this.querySelector('[data-action="preview"]');
+        if (previewButton) {
+            previewButton.addEventListener('click', () => this._preview(name, previewButton));
+        }
+
+        const exportButton = this.querySelector('[data-action="export"]');
+        if (exportButton && total > 0) {
+            exportButton.addEventListener('click', () => this._download(name, exportButton));
         }
     }
 }

@@ -18,6 +18,11 @@
     <div class="button-bar">
         {% if is_editor %}
             <a class="button" href="{{ admin_route('/easyform') }}"><i class="fa fa-reply"></i> {{ "PLUGIN_EASYFORMS.BACK_TO_LIST"|t }}</a>
+            {% if mode == 'edit' %}
+                <a class="button" target="_blank" rel="noopener noreferrer" href="{{ uri.addNonce(admin_route('/easyform/preview/' ~ edit_name) ~ '/task' ~ config.system.param_sep ~ 'easyformPreview', 'admin-form', 'admin-nonce') }}"><i class="fa fa-eye"></i> {{ "PLUGIN_EASYFORMS.PREVIEW"|t }}</a>
+            {% else %}
+                <span class="button disabled" title="{{ "PLUGIN_EASYFORMS.PREVIEW_SAVE_FIRST"|t }}"><i class="fa fa-eye"></i> {{ "PLUGIN_EASYFORMS.PREVIEW"|t }}</span>
+            {% endif %}
             <button class="button" type="submit" name="task" value="easyformSave" form="easyform-editor"><i class="fa fa-check"></i> {{ "PLUGIN_EASYFORMS.SAVE"|t }}</button>
         {% elseif is_submission_detail %}
             <a class="button" href="{{ admin_route('/easyform/submissions/' ~ submissions_form) }}"><i class="fa fa-reply"></i> {{ "PLUGIN_EASYFORMS.BACK_TO_SUBMISSIONS"|t }}</a>
@@ -70,6 +75,7 @@
                         <button type="button" class="button small easyform-copy" data-copy="{{ f.shortcode }}"><i class="fa fa-clipboard"></i> {{ "PLUGIN_EASYFORMS.COPY"|t }}</button>
                     </td>
                     <td class="text-right">
+                        <a class="button" target="_blank" rel="noopener noreferrer" href="{{ uri.addNonce(admin_route('/easyform/preview/' ~ f.name) ~ '/task' ~ config.system.param_sep ~ 'easyformPreview', 'admin-form', 'admin-nonce') }}"><i class="fa fa-eye"></i> {{ "PLUGIN_EASYFORMS.PREVIEW"|t }}</a>
                         <a class="button" href="{{ admin_route('/easyform/submissions/' ~ f.name) }}"><i class="fa fa-inbox"></i> {{ "PLUGIN_EASYFORMS.SUBMISSIONS"|t }}</a>
                         <a class="button" href="{{ admin_route('/easyform/edit/' ~ f.name) }}"><i class="fa fa-edit"></i> {{ "PLUGIN_EASYFORMS.EDIT"|t }}</a>
                         <a class="button" href="{{ uri.addNonce(admin_route('/easyform/edit/' ~ f.name) ~ '/task' ~ config.system.param_sep ~ 'easyformDelete', 'admin-form', 'admin-nonce') }}"

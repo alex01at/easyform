@@ -104,6 +104,41 @@ final class EasyformsApiController extends AbstractApiController
     }
 
     /**
+     * GET /easyform/preview/{name} — raw HTML, fetched and opened in a new
+     * tab the same way export() is (see its docblock: admin2 has no
+     * browsable session for a plain link to carry).
+     *
+     * EasyformsHelper::renderFormHtml() needs a real $grav['page'] (it builds
+     * the Form against it), which a JSON API request doesn't set up on its
+     * own the way normal page routing does. $pages->root() looked like the
+     * obvious stand-in but isn't usable as-is: it has no backing content
+     * file (so header() can't lazy-load one) and no parent chain (so
+     * route() resolves to null), and Form::getAction() requires a non-null
+     * route. A bare Page with slug/header/route all set explicitly sidesteps
+     * both — the preview form doesn't read anything else page-specific.
+     */
+    public function preview(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION);
+
+        $name = (string) $this->getRouteParam($request, 'name');
+        if (!EasyformsHelper::isValidName($name)) {
+            throw new NotFoundException("Form '{$name}' not found.");
+        }
+
+        $page = new \Grav\Common\Page\Page();
+        $page->slug('easyform-preview');
+        $page->route('/easyform-preview');
+        $page->header(['title' => 'Preview']);
+        unset($this->grav['page']);
+        $this->grav['page'] = $page;
+
+        return new Response(200, [
+            'Content-Type' => 'text/html; charset=utf-8',
+        ], EasyformsHelper::renderPreviewHtml($name));
+    }
+
+    /**
      * @return array<string,mixed>
      */
     private function buildPayload(): array
