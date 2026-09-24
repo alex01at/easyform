@@ -282,6 +282,8 @@ class EasyformsHelper
 
         $process = [];
 
+        self::applyAntispam($name, $config, $fields, $process);
+
         if (!empty($config['message'])) {
             $process[] = ['message' => $config['message']];
         }
@@ -321,5 +323,145 @@ class EasyformsHelper
             ],
             'process' => $process,
         ];
+    }
+
+    public static function antispamMethod(array $config): string
+    {
+        $method = (string) ($config['antispam_method'] ?? 'honeypot');
+
+        return in_array($method, ['none', 'honeypot', 'math', 'turnstile', 'recaptcha'], true) ? $method : 'honeypot';
+    }
+
+    public static function honeypotFieldName(array $config): string
+    {
+        $name = trim((string) ($config['antispam_honeypot_field'] ?? ''));
+
+        return $name !== '' ? $name : 'website_hp';
+    }
+
+    /**
+     * Session key the math challenge is stored under for a given form. Kept
+     * as its own named field name ('antispam_math') and this session key so
+     * both the field-building side here and the validation hook in
+     * easyform.php (onFormValidationProcessed) agree on where to look.
+     */
+    public static function mathSessionKey(string $formName): string
+    {
+        return 'easyform_math_' . $formName;
+    }
+
+    /**
+     * Adds whichever spam-protection field/process-action the form is
+     * configured for. Reuses the official `form` plugin's own mechanisms
+     * wherever one exists:
+     *
+     * - honeypot: a `type: honeypot` field. The form plugin already throws
+     *   a ValidationException on its own on submission if it's non-empty
+     *   (FormPlugin::onFormValidationProcessed) — nothing else to add here.
+     * - turnstile / recaptcha: a `type: captcha` field with the matching
+     *   `provider`, plus a `captcha` process action so
+     *   CaptchaManager::validateCaptcha() runs. Site/secret keys fall back
+     *   from the per-form value to this plugin's own global setting; if
+     *   neither is set, the key is simply omitted so the form plugin's own
+     *   global plugins.form.{provider}.* config (if any) applies.
+     * - math: no native equivalent, so this plugin implements it: a
+     *   required text field asking a random a+b question, whose expected
+     *   (hashed) answer is stored in the session and checked in
+     *   easyform.php's own onFormValidationProcessed handler.
+     *
+     * The math/honeypot checks fire before the process chain even starts
+     * (same lifecycle point form.php's own honeypot check uses), so a
+     * failure there skips email/save entirely with no extra ordering care
+     * needed. A captcha failure, however, is itself a process action — one
+     * that stops Form::post()'s process loop when it fails — so it MUST be
+     * the first entry `$process` receives, before message/email/save do;
+     * that's why this runs before the rest of the process array is built.
+     */
+    private static function applyAntispam(string $name, array $config, array &$fields, array &$process): void
+    {
+        $method = self::antispamMethod($config);
+
+        switch ($method) {
+            case 'honeypot':
+                $fields[] = [
+                    'name' => self::honeypotFieldName($config),
+                    'label' => '',
+                    'type' => 'honeypot',
+                ];
+                break;
+
+            case 'math':
+                $session = Grav::instance()['session'];
+                $sessionKey = self::mathSessionKey($name);
+                $challenge = $session->{$sessionKey} ?? null;
+
+                if (!is_array($challenge) || !isset($challenge['a'], $challenge['b'], $challenge['hash'])) {
+                    // Only generate a new question when none is pending —
+                    // this method also runs while rebuilding the form object
+                    // to validate a just-submitted answer, and regenerating
+                    // it there would overwrite the expected answer before
+                    // it's even checked.
+                    $a = random_int(1, 10);
+                    $b = random_int(1, 10);
+                    $challenge = ['a' => $a, 'b' => $b, 'hash' => hash('sha256', (string) ($a + $b))];
+                    $session->{$sessionKey} = $challenge;
+                }
+
+                $labelTemplate = trim((string) ($config['antispam_math_label'] ?? ''));
+                if ($labelTemplate === '') {
+                    $labelTemplate = 'Security question: what is {a} + {b}?';
+                }
+                $label = str_replace(['{a}', '{b}'], [(string) $challenge['a'], (string) $challenge['b']], $labelTemplate);
+
+                $fields[] = [
+                    'name' => 'antispam_math',
+                    'label' => $label,
+                    'type' => 'text',
+                    'validate' => ['required' => true],
+                ];
+                break;
+
+            case 'turnstile':
+            case 'recaptcha':
+                $globalConfig = Grav::instance()['config'];
+
+                $siteKey = trim((string) ($config['antispam_site_key'] ?? ''));
+                if ($siteKey === '') {
+                    $siteKey = trim((string) $globalConfig->get('plugins.easyform.antispam_' . $method . '_site_key', ''));
+                }
+
+                $secretKey = trim((string) ($config['antispam_secret_key'] ?? ''));
+                if ($secretKey === '') {
+                    $secretKey = trim((string) $globalConfig->get('plugins.easyform.antispam_' . $method . '_secret_key', ''));
+                }
+
+                $field = [
+                    'name' => 'captcha',
+                    'label' => '',
+                    'type' => 'captcha',
+                    'provider' => $method,
+                ];
+                if ($siteKey !== '') {
+                    $field[$method . '_site_key'] = $siteKey;
+                }
+                if ($method === 'recaptcha') {
+                    // Both the field template and CaptchaManager read this
+                    // per-field/per-param value ahead of the form plugin's
+                    // own global config, so this alone is enough to force
+                    // v3 regardless of that global setting.
+                    $field['recaptcha_version'] = 3;
+                }
+                $fields[] = $field;
+
+                $captchaParams = [];
+                if ($secretKey !== '') {
+                    $captchaParams[$method . '_secret'] = $secretKey;
+                }
+                if ($method === 'recaptcha') {
+                    $captchaParams['recaptcha_version'] = 3;
+                }
+                $process[] = ['captcha' => $captchaParams];
+                break;
+        }
     }
 }

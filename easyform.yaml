@@ -1,2 +1,6 @@
 enabled: true
 github_repo: ''
+antispam_turnstile_site_key: ''
+antispam_turnstile_secret_key: ''
+antispam_recaptcha_site_key: ''
+antispam_recaptcha_secret_key: ''

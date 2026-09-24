@@ -155,6 +155,50 @@ form:
           validate:
             type: bool
 
+        .antispam_method:
+          type: select
+          label: PLUGIN_EASYFORMS.FIELD_ANTISPAM_METHOD
+          help: PLUGIN_EASYFORMS.FIELD_ANTISPAM_METHOD_HELP
+          default: honeypot
+          options:
+            none: PLUGIN_EASYFORMS.ANTISPAM_NONE
+            honeypot: PLUGIN_EASYFORMS.ANTISPAM_HONEYPOT
+            math: PLUGIN_EASYFORMS.ANTISPAM_MATH
+            turnstile: PLUGIN_EASYFORMS.ANTISPAM_TURNSTILE
+            recaptcha: PLUGIN_EASYFORMS.ANTISPAM_RECAPTCHA
+
+        .antispam_honeypot_field:
+          type: text
+          label: PLUGIN_EASYFORMS.FIELD_HONEYPOT_NAME
+          help: PLUGIN_EASYFORMS.FIELD_HONEYPOT_NAME_HELP
+          placeholder: website_hp
+
+        .antispam_honeypot_message:
+          type: text
+          label: PLUGIN_EASYFORMS.FIELD_HONEYPOT_MESSAGE
+          help: PLUGIN_EASYFORMS.FIELD_HONEYPOT_MESSAGE_HELP
+
+        .antispam_math_label:
+          type: text
+          label: PLUGIN_EASYFORMS.FIELD_MATH_LABEL
+          help: PLUGIN_EASYFORMS.FIELD_MATH_LABEL_HELP
+          default: PLUGIN_EASYFORMS.DEFAULT_MATH_LABEL
+
+        .antispam_math_message:
+          type: text
+          label: PLUGIN_EASYFORMS.FIELD_MATH_MESSAGE
+          default: PLUGIN_EASYFORMS.DEFAULT_MATH_MESSAGE
+
+        .antispam_site_key:
+          type: text
+          label: PLUGIN_EASYFORMS.FIELD_ANTISPAM_SITE_KEY
+          help: PLUGIN_EASYFORMS.FIELD_ANTISPAM_SITE_KEY_HELP
+
+        .antispam_secret_key:
+          type: text
+          label: PLUGIN_EASYFORMS.FIELD_ANTISPAM_SECRET_KEY
+          help: PLUGIN_EASYFORMS.FIELD_ANTISPAM_SECRET_KEY_HELP
+
     update_section:
       type: section
       title: PLUGIN_EASYFORMS.UPDATE_TITLE

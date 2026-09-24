@@ -1,7 +1,7 @@
 name: Easy Forms
 slug: easyform
 type: plugin
-version: 0.1.4
+version: 0.2.0
 description: Manage Grav forms as standalone entities from the Admin panel and embed them anywhere via shortcode or Twig function.
 icon: wpforms
 author:
@@ -38,3 +38,23 @@ form:
       label: PLUGIN_EASYFORMS.FIELD_GITHUB_REPO
       help: PLUGIN_EASYFORMS.FIELD_GITHUB_REPO_HELP
       placeholder: 'owner/easyform'
+
+    antispam_turnstile_site_key:
+      type: text
+      label: PLUGIN_EASYFORMS.FIELD_GLOBAL_TURNSTILE_SITE_KEY
+      help: PLUGIN_EASYFORMS.FIELD_GLOBAL_KEY_HELP
+
+    antispam_turnstile_secret_key:
+      type: text
+      label: PLUGIN_EASYFORMS.FIELD_GLOBAL_TURNSTILE_SECRET_KEY
+      help: PLUGIN_EASYFORMS.FIELD_GLOBAL_KEY_HELP
+
+    antispam_recaptcha_site_key:
+      type: text
+      label: PLUGIN_EASYFORMS.FIELD_GLOBAL_RECAPTCHA_SITE_KEY
+      help: PLUGIN_EASYFORMS.FIELD_GLOBAL_KEY_HELP
+
+    antispam_recaptcha_secret_key:
+      type: text
+      label: PLUGIN_EASYFORMS.FIELD_GLOBAL_RECAPTCHA_SECRET_KEY
+      help: PLUGIN_EASYFORMS.FIELD_GLOBAL_KEY_HELP

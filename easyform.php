@@ -7,6 +7,7 @@ namespace Grav\Plugin;
 use Composer\Autoload\ClassLoader;
 use Grav\Common\Data\Blueprint;
 use Grav\Common\Data\Data;
+use Grav\Common\Data\ValidationException;
 use Grav\Common\Page\Interfaces\PageInterface;
 use Grav\Common\Plugin;
 use Grav\Common\Twig\Twig;
@@ -209,6 +210,15 @@ class EasyformPlugin extends Plugin
             // Higher priority than the `form` plugin's own onPageInitialized (0),
             // so our form is registered as the active one before it looks for it.
             'onPageInitialized' => ['onPageInitialized', 10],
+            // Math-captcha validation: same lifecycle point the form plugin's
+            // own honeypot check uses (fires inside Form::post(), before the
+            // process/email/save chain even starts).
+            'onFormValidationProcessed' => ['onAntispamValidationProcessed', 0],
+            // Higher priority than the form plugin's own onFormValidationError
+            // (0), so ours runs first and can turn a detected honeypot hit
+            // into a silent/generic response before the default handler sets
+            // the visible "you got caught" message.
+            'onFormValidationError' => ['onAntispamValidationError', 10],
         ]);
     }
 
@@ -447,7 +457,22 @@ class EasyformPlugin extends Plugin
         // serve a stale one to the next visitor.
         $page->modifyHeader('never_cache_twig', true);
 
-        return $this->grav['twig']->processTemplate('forms/form.html.twig', ['form' => $form]);
+        $html = $this->grav['twig']->processTemplate('forms/form.html.twig', ['form' => $form]);
+
+        $config = EasyformsHelper::loadRaw($name);
+        if ($config && EasyformsHelper::antispamMethod($config) === 'honeypot') {
+            // The form plugin's own honeypot field hides itself with
+            // visibility:hidden, which some bots specifically look for and
+            // skip filling in (defeating the trap). Positioning it off-screen
+            // instead, without display:none, is a more effective disguise —
+            // overridden here rather than in the honeypot field's own
+            // template, which belongs to the (third-party) form plugin.
+            $html = '<style>.form-honeybear{opacity:0!important;position:absolute!important;'
+                . 'top:0!important;left:-9999px!important;height:0!important;width:0!important;'
+                . 'z-index:-1!important;}</style>' . $html;
+        }
+
+        return $html;
     }
 
     /**
@@ -490,5 +515,92 @@ class EasyformPlugin extends Plugin
             $forms->setActiveForm($form);
             $page->modifyHeader('never_cache_twig', true);
         }
+    }
+
+    /**
+     * Math-captcha check. Honeypot needs nothing here — the form plugin
+     * already validates that field type on its own at this exact same
+     * lifecycle point (FormPlugin::onFormValidationProcessed), and
+     * turnstile/recaptcha are validated later as their own process action.
+     */
+    public function onAntispamValidationProcessed(Event $event): void
+    {
+        $form = $event['form'];
+        if (!$form instanceof Form) {
+            return;
+        }
+
+        $name = $form->getName();
+        if (!EasyformsHelper::exists($name)) {
+            return;
+        }
+
+        $config = EasyformsHelper::loadRaw($name);
+        if (!$config || EasyformsHelper::antispamMethod($config) !== 'math') {
+            return;
+        }
+
+        $session = $this->grav['session'];
+        $sessionKey = EasyformsHelper::mathSessionKey($name);
+        $challenge = $session->{$sessionKey} ?? null;
+        $expectedHash = is_array($challenge) ? ($challenge['hash'] ?? null) : null;
+
+        $submitted = trim((string) $form->value('antispam_math'));
+        $submittedHash = $submitted !== '' ? hash('sha256', $submitted) : '';
+
+        if (!is_string($expectedHash) || !hash_equals($expectedHash, $submittedHash)) {
+            $message = trim((string) ($config['antispam_math_message'] ?? ''));
+            if ($message === '') {
+                $message = $this->grav['language']->translate('PLUGIN_EASYFORMS.ANTISPAM_MATH_ERROR');
+            }
+
+            throw new ValidationException($message);
+        }
+
+        // Correct answer: clear it so a fresh question is generated for the
+        // next visit rather than letting the same one be reused indefinitely.
+        unset($session->{$sessionKey});
+    }
+
+    /**
+     * Turns a detected honeypot hit into either a configured message or (by
+     * default) a fake success — indistinguishable from a real submission —
+     * so an automated submitter gets no signal that it was caught, while a
+     * genuine validation error on a non-honeypot field still shows normally.
+     */
+    public function onAntispamValidationError(Event $event): void
+    {
+        $form = $event['form'];
+        if (!$form instanceof Form) {
+            return;
+        }
+
+        $name = $form->getName();
+        if (!EasyformsHelper::exists($name)) {
+            return;
+        }
+
+        $config = EasyformsHelper::loadRaw($name);
+        if (!$config || EasyformsHelper::antispamMethod($config) !== 'honeypot') {
+            return;
+        }
+
+        $honeypotField = EasyformsHelper::honeypotFieldName($config);
+        if (trim((string) $form->value($honeypotField)) === '') {
+            // Empty honeypot: this error is unrelated (e.g. a genuinely
+            // missing required field), so let it display normally.
+            return;
+        }
+
+        $customMessage = trim((string) ($config['antispam_honeypot_message'] ?? ''));
+        if ($customMessage !== '') {
+            $form->status = 'error';
+            $form->message = $customMessage;
+        } else {
+            $form->status = 'success';
+            $form->message = (string) ($config['message'] ?? '');
+        }
+
+        $event->stopPropagation();
     }
 }
